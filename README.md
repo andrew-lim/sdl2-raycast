@@ -6,5 +6,7 @@ This is a port of [my HTML5 canvas version here](https://github.com/andrew-lim/h
 
 Wall and gun textures are from Sporbs High Resolution Texture Pack by Kev Reid.
 
+You can download the [Windows Demo here](https://github.com/andrew-lim/sdl2-raycast/releases/)
+
 ![](res/screenshot800x600.png)
 
