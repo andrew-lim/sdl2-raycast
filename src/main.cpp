@@ -3,7 +3,7 @@ SDL2 raycasting example in the style of Wolfenstein 3D.
 Author: Andrew Lim Chong Liang
 https://github.com/andrew-lim
 
-Linker settings (in Code::Blocks under Project->Build Options...)
+Linker settings
 -lmingw32 -lSDL2main -lSDL2
 */
 #include <SDL2/SDL.h>
@@ -126,9 +126,7 @@ private:
     SDL_Surface* wallBitmap;
     SDL_Texture* wallTexture;
     SDL_Surface* floorBitmap;
-    SDL_Surface* ceilingBitmap;
     SDL_Texture* floorTexture;
-    SDL_Texture* ceilingTexture;
     SDL_Surface* gunBitmap;
     SDL_Texture* gunTexture;
     bool drawMiniMapOn;
@@ -170,11 +168,8 @@ void Game::start() {
     printf("Error creating texture from walls");
     return;
   }
-  ceilingBitmap =  SDL_LoadBMP("..\\res\\ceiling.bmp");
   floorBitmap =  SDL_LoadBMP("..\\res\\floor.bmp");
-  ceilingTexture = SDL_CreateTextureFromSurface(renderer, ceilingBitmap);
   floorTexture = SDL_CreateTextureFromSurface(renderer, floorBitmap);
-  
   gunBitmap = SDL_LoadBMP("..\\res\\SMG.bmp");
   SDL_SetColorKey( gunBitmap, true, SDL_MapRGB(gunBitmap->format, 152, 0, 136) );
   gunTexture = SDL_CreateTextureFromSurface(renderer, gunBitmap);
@@ -356,8 +351,6 @@ void Game::drawFloorAndCeiling() {
   ceilingRect.w = DISPLAY_WIDTH;
   ceilingRect.h = DISPLAY_HEIGHT/2;
   fillRect(&ceilingRect, 56, 56, 56 );
-//SDL_RenderCopy(renderer, ceilingTexture, &srcrect, &ceilingRect);
-
   
   SDL_Rect floorRect;
   floorRect.x = 0;
