@@ -1,4 +1,4 @@
-# SDL2 Rayast
+# SDL2 Raycast Demo
 A Wolfenstein 3D style raycaster using C++ and SDL2.
 
 This is a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast).
