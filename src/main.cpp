@@ -6,11 +6,22 @@ https://github.com/andrew-lim
 Linker settings
 -lmingw32 -lSDL2main -lSDL2
 */
-#include <SDL2/SDL.h>
+#include <SDL.h>
+#include <SDL_mixer.h>
+#include "sdl2utils.h"
 #include <cstdio>
 #include <map>
 #include <cmath>
 #include <vector>
+#include <string>
+#include <queue>
+#include <algorithm>
+#include <ctime>
+#include <queue>
+#include <windows.h>
+
+using namespace al::sdl2utils;
+using namespace std;
 
 // Length of a wall or cell in game units.
 // In the original Wolfenstein 3D it was 8 feet (1 foot = 16 units)
@@ -21,42 +32,72 @@ const int DISPLAY_WIDTH = 800;
 const int DISPLAY_HEIGHT = 600;
 const int MINIMAP_SCALE = 6;
 const int MINIMAP_Y = 0; // position of minimap from top of screen
-const int UPDATE_INTERVAL = 1000/60;
+const int TARGET_FPS = 30;
+const int UPDATE_INTERVAL = 1000/TARGET_FPS;
 const int STRIP_WIDTH = 1;
-const int FOV_DEGREES = 60;
-const double FOV_RADIANS = (double)FOV_DEGREES * M_PI / 180; // FOV in radians
-const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH; //  Math.ceil(screenWidth / STRIP_WIDTH);
-const double viewDist = (DISPLAY_WIDTH/2) / tan((FOV_RADIANS / 2));
-const double TWO_PI = M_PI*2;
+const int FOV_DEGREES = 75;
+const float FOV_RADIANS = (float)FOV_DEGREES * M_PI / 180; // FOV in radians
+const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH;
+const float viewDist = (DISPLAY_WIDTH/2) / tan((FOV_RADIANS / 2));
+const float TWO_PI = M_PI*2;
+
+class Sprite;
 
 // Holds information about a wall hit from a single ray
-struct WallHit {
-  double x, y;      // wall position in game units
+struct RayHit {
+  float x, y;      // wall position in game units
   int wallX, wallY; // wall position in column, row tile units
   int wallType;     // type of wall hit
   int strip;        // strip on screen for this wall
-  double tileX;     // x-coordinate within tile, used for calculating texture x
-  double distance;  // distance to wall
+  float tileX;     // x-coordinate within tile, used for calculating texture x
+  float distance;  // distance to wall
+  float straightDistance; // fisheye correction distance
   bool horizontal;  // true if wall was hit on the bottom or top
-  double rayAngle;  // angle used for calculation
-  WallHit() {
-    x = y = wallType = strip = wallX = wallY = tileX = distance = 0;
+  float rayAngle;  // angle used for calculation
+  Sprite* sprite; // a sprite was hit
+  int level; // ground level (0) or some other level.
+  RayHit(int worldX=0, int worldY=0, float angle=0)
+  : x(worldX), y(worldY), rayAngle(angle) {
+    wallType = strip = wallX = wallY = tileX = distance = 0;
+    straightDistance = 0;
     horizontal = false;
-    rayAngle = 0;
+    level = 0;
   }
 };
+
+// Objects further away are drawn first using this
+struct RayHitCompare
+{
+    bool operator() (RayHit a, RayHit b)
+    {
+        return a.distance > b.distance;
+    }
+} rayHitCompare;
 
 class Sprite {
 public:
     int x, y ;
-    int dir;          // the direction that the player is turning, either -1 for left or 1 for right.
-    double rot;       // the current angle of rotation. Counterclockwise is positive.
-    int speed;        // is the playing moving forward (speed = 1) or backwards (speed = -1).
-    int moveSpeed;    // how far (in map units) does the player move each step/update
-    double  rotSpeed; // how much does the player rotate each step/update (in radians)
-    Sprite() :x(0), y(0), dir(0), rot(0), speed(0) {
-      moveSpeed = TILE_SIZE / 8;
-      rotSpeed = 4 * M_PI/180;
+    int w, h ;
+    int dir;         // -1 for left or 1 for right.
+    float rot;       // rotation (counterclockwise is positive)
+    int speed;       // forward (speed = 1) or backwards (speed = -1).
+    int moveSpeed;   // how far (in map units) to move each step/update
+    float rotSpeed;  // rotation speed (in radians)
+    float distance;  // used for z-buffer calculation
+    int textureID;
+    bool cleanup;
+    int frameRate;
+    int frame;
+    bool hidden;
+    Sprite() :x(0), y(0), w(0), h(0), dir(0), rot(0), speed(0) {
+      moveSpeed = TILE_SIZE / (TARGET_FPS/60.0f*16);
+      rotSpeed = (4) * M_PI/180;
+      distance = 0;
+      textureID = 0;
+      cleanup = false;
+      frameRate = 0;
+      frame = 0;
+      hidden = false;
     }
 } ;
 
@@ -69,15 +110,15 @@ static int g_map[MAP_HEIGHT][MAP_WIDTH] = {
   {1,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
   {1,0,0,3,0,3,0,0,1,1,1,2,1,1,1,1,1,2,1,1,1,2,1,0,0,0,0,0,0,0,0,1},
   {1,0,0,3,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
-  {1,0,0,3,0,3,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1},
-  {1,0,0,3,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2},
-  {1,0,0,3,0,3,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
+  {1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2},
+  {1,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2},
+  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,1},
   {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2},
-  {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,3,0,0,0,0,1},
   {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
   {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
   {1,0,0,4,0,0,4,2,0,2,2,2,2,2,2,2,2,0,2,4,4,0,0,4,0,0,0,0,0,0,0,1},
@@ -90,6 +131,141 @@ static int g_map[MAP_HEIGHT][MAP_WIDTH] = {
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
 };
 
+
+static int g_map2[MAP_HEIGHT][MAP_WIDTH] = {
+  {1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,0}
+};
+
+
+static int g_floormap[MAP_HEIGHT][MAP_WIDTH] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4,4,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4,4,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,0,0,0,0,0,4,4,0},
+  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,3,3,3,2,0,0,0,0,0,4,4,0},
+  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,3,3,3,2,0,0,0,0,0,4,4,0},
+  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,3,3,3,2,0,2,2,2,2,2,1,0},
+  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,2,2,2,2,0,2,1,1,1,1,1,1},
+  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+};
+
+static int g_ceilingmap[MAP_HEIGHT][MAP_WIDTH] = {
+                               //15            //23          //31
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0} // 23
+};
+
+typedef enum SpriteType {
+  SpriteTypeTree1 = 1,
+  SpriteTypeTree2 = 2,
+  SpriteTypeZombie = 3,
+  SpriteTypeSkeleton = 4,
+  SpriteTypeRobot = 5,
+  SpriteTypeFrogman = 6,
+  SpriteTypeHeroine = 7,
+  SpriteTypeDruid = 8,
+  SpriteTypeProjectile = 9,
+  SpriteTypeProjectileSplash = 10
+} SpriteType;
+
+static int g_spritemap[MAP_HEIGHT][MAP_WIDTH] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,1,0,0,0,0,0,0,0,0,3,0,0,0,6,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,2,0,0},
+  {0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,6,0},
+  {0,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0},
+  {0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,2,0,1,0,0,0,0,2,0,0,0,0,0,0,6,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,2,0,0,0,0,0,0,7,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+};
+
+bool isWallInRayHits( vector<RayHit>& rayHits, int cellX, int cellY ) {
+  for (vector<RayHit>::iterator it=rayHits.begin(); it!=rayHits.end();
+       ++it) {
+    RayHit& rayHit = *it;
+    if (rayHit.wallType && rayHit.wallX==cellX && rayHit.wallY==cellY) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class Game {
 public:
     Game();
@@ -98,109 +274,251 @@ public:
     void stop() ;
     void draw();
     void fillRect(SDL_Rect* rc, int r, int g, int b );
-    void drawLine(int startX, int startY, int endX, int endY, int r, int g, int b, int alpha=SDL_ALPHA_OPAQUE );
+    void drawLine(int startX, int startY, int endX, int endY, int r, int g,
+                  int b, int alpha=SDL_ALPHA_OPAQUE );
     void fpsChanged( int fps );
     void onQuit();
     void onKeyDown( SDL_Event* event );
     void onKeyUp( SDL_Event* event );
+    void reset();
     void run();
-    void update();
+    void update(float timeElapsed);
+    void drawFloor(vector<RayHit>& rayHits);
+    void drawCeiling(vector<RayHit>& rayHits);
+    void drawWeapon();
     void drawMiniMap();
+    void drawMiniMapSprites();
     void updatePlayer();
-    void drawFloorAndCeiling();
+    void updateProjectiles(float elaspedTime);
     void drawPlayer();
-    void drawRay(double rayX, double rayY);
-    void drawRays(std::vector<WallHit>& wallHits);
-    void drawWallStrip(double textureX, double textureY, int stripIdx, int wallScreenHeight);
-    void drawWalls(std::vector<WallHit>& wallHits);
-    WallHit calculateWallHit(int playerX, int playerY, double rayAngle, int stripIdx);
-    void raycast(std::vector<WallHit>& wallHits);
-    bool wallHit(int wallX, int wallY);
+    void drawRay(float rayX, float rayY);
+    void drawRays(vector<RayHit>& rayHits);
+    void drawWallStrip(float textureX, float textureY, int stripIdx,
+                       int wallScreenHeight, int floors=1, int level=0);
+    void drawWorld(vector<RayHit>& rayHits);
+    vector<RayHit> raycast( int grid[][MAP_WIDTH],
+                                 int playerX, int playerY, float rayAngle,
+                                 int stripIdx, bool penetrate=false,
+                                 bool lookForSprites=false,
+                                 vector<RayHit>* wallsToIgnore=NULL );
+    void raycastWorld(vector<RayHit>& rayHits);
+    bool isWallCell(int wallX, int wallY);
+    vector<Sprite*> findSpritesInCell(int cellX, int cellY);
+    SDL_Rect findSpriteScreenPosition( Sprite& sprite );
+    void addSpriteAt( int spriteid, int cellX, int cellY );
+    void addProjectile(int textureid, int x, int y, int size, float rotation);
+    float sine(float f);
+    float cosine(float f);
 private:
-    std::map<int,int> keys; // No SDLK_LAST. SDL2 migration guide suggests std::map
+    std::map<int,int> keys; // store keydown presses
     int frameSkip ;
     int running ;
     SDL_Window* window;
     SDL_Renderer* renderer;
     Sprite player;
-    SDL_Surface* wallBitmap;
-    SDL_Texture* wallTexture;
-    SDL_Surface* floorBitmap;
-    SDL_Texture* floorTexture;
-    SDL_Surface* gunBitmap;
-    SDL_Texture* gunTexture;
-    bool drawMiniMapOn;
+    SurfaceTexture wallsImage;
+    SurfaceTexture gunImage;
+    vector<Sprite> sprites;
+    std::queue<Sprite> projectilesQueue;
+    bool drawMiniMapOn, drawTexturedFloorOn, drawCeilingOn, drawWallsOn;
+    Bitmap floorBitmap, floorBitmap2, floorBitmap3,
+                          ceilingBitmap, waterBitmap, mossyCobbleBitmap;
+    StreamingTexture streamingTexture;
+    Uint32 ceilingColor;
+    Mix_Chunk* projectileFireSound;
+    Mix_Chunk* projectileExplodeSound;
+    std::map<int,SurfaceTexture> spriteTextures;
 };
+
+float Game::sine(float f) {
+  return sin(f);
+}
+
+float Game::cosine(float f) {
+  return cos(f);
+}
+
+void Game::addSpriteAt( int spriteid, int cellX, int cellY ) {
+  Sprite s;
+  s.x = cellX * TILE_SIZE  + (TILE_SIZE/2);
+  s.y = cellY * TILE_SIZE  + (TILE_SIZE/2);
+  s.w = TILE_SIZE;
+  s.h = TILE_SIZE;
+  s.textureID = spriteid;
+  sprites.push_back(s);
+}
+
+void Game::addProjectile(int textureid, int x, int y, int size, float rotation){
+  Sprite s;
+  s.x = x;
+  s.y = y;
+  s.rot = rotation;
+  s.w = size;
+  s.h = size;
+  s.textureID = textureid;
+  projectilesQueue.push( s );
+}
 
 Game::Game()
 :frameSkip(0), running(0), window(NULL), renderer(NULL) {
-  player.x = 16 * TILE_SIZE;
-  player.y = 10 * TILE_SIZE;
+  srand (time(NULL));
+
   drawMiniMapOn = true;
+  drawTexturedFloorOn = true;
+  drawCeilingOn = true;
+  drawWallsOn = true;
+
+  reset();
 }
 
 Game::~Game() {
-    this->stop();
+  this->stop();
 }
 
+void Game::reset()
+{
+  player.x = 28 * TILE_SIZE;
+  player.y = 12 * TILE_SIZE;
+  player.rot = 0;
+
+  sprites.clear();
+  for (int y=0; y<MAP_HEIGHT; y++) {
+    for (int x=0; x<MAP_WIDTH; x++) {
+      int spriteid = g_spritemap[ y ][ x ];
+      if (spriteid) {
+        addSpriteAt( spriteid, x, y );
+      }
+    }
+  }
+}
+  
 void Game::start() {
-  printf("Press M to toggle minimap\n");
-  printf("Display=(%d,%d)\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
-  printf("Map size=(%d,%d)\n", MAP_WIDTH, MAP_HEIGHT);
-  printf("Wall/Tile Size=%d\n", TILE_SIZE);
-  printf("Texture Size=%d\n", TEXTURE_SIZE);
+  printf("Resolution   = %d x %d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
+  printf("Map size     = %d x %d\n", MAP_WIDTH, MAP_HEIGHT);
+  printf("Wall size    = %d game units\n", TILE_SIZE);
+  printf("Texture Size = %d pixels\n", TEXTURE_SIZE);
+  printf("FOV          = %d degrees\n", FOV_DEGREES);
+  printf("Distance to Projection Plane = %f\n", viewDist);
   int flags = SDL_WINDOW_SHOWN ;
   if (SDL_Init(SDL_INIT_EVERYTHING)) {
       return ;
   }
-  if (SDL_CreateWindowAndRenderer(DISPLAY_WIDTH, DISPLAY_HEIGHT, flags, &window, &renderer)) {
-      return;
+
+  window = SDL_CreateWindow("SDL2 Raycast Engine",
+                             SDL_WINDOWPOS_CENTERED,
+                            SDL_WINDOWPOS_CENTERED,
+                            DISPLAY_WIDTH,
+                             DISPLAY_HEIGHT,
+                             flags);
+
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+//  SDL_SetWindowResizable(window, SDL_TRUE );
+//  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+  SDL_RendererInfo rendererInfo;
+  SDL_GetRendererInfo(renderer, &rendererInfo);
+
+  printf("Renderer: %s ", rendererInfo.name);
+  if (rendererInfo.flags & SDL_RENDERER_SOFTWARE) {
+    printf("- SDL_RENDERER_SOFTWARE\n");
   }
-  SDL_SetWindowTitle(window, "SDL2 Raycasting - https://github.com/andrew-lim");
-  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-  wallBitmap = SDL_LoadBMP("..\\res\\walls4.bmp");
-  if (!wallBitmap) {
-    printf("Error loading walls4.bmp");
+  if (rendererInfo.flags & SDL_RENDERER_ACCELERATED) {
+    printf("- SDL_RENDERER_ACCELERATED\n");
+  }
+
+  Uint32 pf = SDL_GetWindowPixelFormat(window);
+  printf("windowPixelFormat = %s\n", SDL_GetPixelFormatName(pf));
+
+  SDL_PixelFormat* tmppf = SDL_AllocFormat(pf);
+  ceilingColor = SDL_MapRGB(tmppf, 139, 185, 249);
+  SDL_FreeFormat(tmppf);
+
+  //--------------
+  // Load Textures
+  //--------------
+
+  if (!wallsImage.loadBitmap("..\\res\\walls4.bmp")) {
+    printf("Error loading walls4.bmp\n");
     return;
   }
-  wallTexture = SDL_CreateTextureFromSurface(renderer, wallBitmap);
-  if (!wallTexture) {
-    printf("Error creating texture from walls");
+  wallsImage.createTexture(renderer);
+  
+  if (!gunImage.loadBitmap("..\\res\\gun1a.bmp")) {
+    printf("Error loading gun image\n");
     return;
   }
-  floorBitmap =  SDL_LoadBMP("..\\res\\floor.bmp");
-  floorTexture = SDL_CreateTextureFromSurface(renderer, floorBitmap);
-  gunBitmap = SDL_LoadBMP("..\\res\\SMG.bmp");
-  SDL_SetColorKey( gunBitmap, true, SDL_MapRGB(gunBitmap->format, 152, 0, 136) );
-  gunTexture = SDL_CreateTextureFromSurface(renderer, gunBitmap);
+  Uint32 colorKey = SDL_MapRGB(gunImage.getSurface()->format,152,0,136);
+  SDL_SetColorKey( gunImage.getSurface(), true, colorKey );
+  gunImage.createTexture(renderer);
+
+  std::map<int,std::string> spriteFilenames;
+  spriteFilenames[ SpriteTypeTree1 ] = "tree.bmp";
+  spriteFilenames[ SpriteTypeTree2 ] = "tree2.bmp";
+  spriteFilenames[ SpriteTypeZombie ] = "zombie.bmp";
+  spriteFilenames[ SpriteTypeSkeleton ] = "skeleton.bmp";
+  spriteFilenames[ SpriteTypeRobot ] = "robot1.bmp";
+  spriteFilenames[ SpriteTypeFrogman ] = "frogman.bmp";
+  spriteFilenames[ SpriteTypeHeroine ] = "heroine.bmp";
+  spriteFilenames[ SpriteTypeDruid ] = "druid.bmp";
+  spriteFilenames[ SpriteTypeProjectile ] = "plasmball.bmp";
+  spriteFilenames[ SpriteTypeProjectileSplash ] = "fireball0.bmp";
+  for (std::map<int,std::string>::iterator i=spriteFilenames.begin();
+       i!=spriteFilenames.end(); ++i)
+  {
+    int textureid = i->first;
+    std::string filename = "..\\res\\" + i->second;
+    printf("Loading texture image %s\n", filename.c_str());
+    SurfaceTexture& surfaceTexture = spriteTextures[textureid];
+    surfaceTexture.loadBitmap(filename.c_str());
+    SDL_SetColorKey( surfaceTexture.getSurface(), true, colorKey );
+    surfaceTexture.createTexture(renderer);
+  }
+
+  if (!floorBitmap.load( "..\\res\\grass.bmp", renderer, pf)) {
+    printf("floorBitmap failed to load\n");
+    return;
+  }
+  floorBitmap2.load( "..\\res\\default_brick.bmp", renderer, pf );
+  floorBitmap3.load( "..\\res\\default_aspen_wood.bmp", renderer, pf );
+  ceilingBitmap.load( "..\\res\\wall1d.bmp", renderer, pf );
+  waterBitmap.load( "..\\res\\water.bmp", renderer, pf );
+  mossyCobbleBitmap.load( "..\\res\\mossycobble.bmp", renderer, pf );
+
+  streamingTexture.create(window, renderer, pf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
+//  SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+
+  //Initialize SDL_mixer
+  if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 2048 ) < 0 )
+  {
+    printf( "Mix_OpenAudio failed. SDL_mixer Error: %s\n", Mix_GetError() );
+    return;
+  }
+
+  projectileFireSound = Mix_LoadWAV( "..\\res\\iceball.wav" );
+  projectileExplodeSound = Mix_LoadWAV( "..\\res\\explode.wav" );
+  Mix_VolumeChunk(projectileFireSound, MIX_MAX_VOLUME/2);
+  Mix_VolumeChunk(projectileExplodeSound, MIX_MAX_VOLUME/3);
+
   this->running = 1 ;
   run();
 }
 
 void Game::draw() {
     // Clear screen
-    SDL_SetRenderDrawColor(renderer, 1, 65, 65, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, 139, 185, 249, SDL_ALPHA_OPAQUE );
     SDL_RenderClear(renderer);
-    drawFloorAndCeiling();
-    static std::vector<WallHit> wallHits;
-    wallHits.clear();
-    raycast(wallHits);
-    drawWalls(wallHits);
+
+    static vector<RayHit> allRayHits;
+    allRayHits.clear();
+    raycastWorld(allRayHits);
+    drawWorld(allRayHits);
     if (drawMiniMapOn) {
       drawMiniMap();
-      drawRays(wallHits);
+      drawRays(allRayHits);
       drawPlayer();
+      drawMiniMapSprites();
     }
-    
-    // Draw Gun
-    double gunScale = DISPLAY_WIDTH / 320;
-    SDL_Rect dstRect;
-    dstRect.w = gunBitmap->w * gunScale;
-    dstRect.h = gunBitmap->h * gunScale;
-    dstRect.x = (DISPLAY_WIDTH - dstRect.w) / 2;
-    dstRect.y = DISPLAY_HEIGHT - dstRect.h;
-    SDL_RenderCopy(renderer, gunTexture, NULL, &dstRect);
-    
+    drawWeapon();
     SDL_RenderPresent(renderer);
 }
 
@@ -221,15 +539,31 @@ void Game::fillRect(SDL_Rect* rc, int r, int g, int b ) {
     SDL_RenderFillRect(renderer, rc);
 }
 
-void Game::drawLine(int startX, int startY, int endX, int endY, int r, int g, int b, int alpha ) {
-  
+void Game::drawLine(int startX, int startY, int endX, int endY,
+                    int r, int g, int b, int alpha ) {
+
   SDL_SetRenderDrawColor(renderer, r, g, b, alpha);
   SDL_RenderDrawLine(renderer, startX, startY, endX, endY);
 }
 
+void Game::drawWeapon() {
+  float gunScale = DISPLAY_WIDTH / 320;
+  SDL_Rect dstRect;
+  SDL_Surface* gunSurface = gunImage.getSurface();
+  SDL_Texture* gunTexture = gunImage.getTexture();
+  dstRect.w = gunSurface->w * gunScale;
+  dstRect.h = gunSurface->h * gunScale;
+  dstRect.x = (DISPLAY_WIDTH - dstRect.w) / 2;
+  dstRect.y = DISPLAY_HEIGHT - dstRect.h;
+  SDL_RenderCopy(renderer, gunTexture, NULL, &dstRect);
+}
+
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "%s - %d FPS", "SDL2 Raycasting - https://github.com/andrew-lim", fps );
+    int tileX = player.x / TILE_SIZE;
+    int tileY = player.y / TILE_SIZE;
+    sprintf( szFps, "Pos (%d,%d)  Tile (%d,%d) - %d FPS", player.x, player.y,
+             tileX, tileY, fps );
     SDL_SetWindowTitle(window, szFps);
 }
 
@@ -259,7 +593,7 @@ void Game::run() {
         timeElapsed = (now=SDL_GetTicks()) - past ;
         if ( timeElapsed >= UPDATE_INTERVAL  ) {
             past = now ;
-            update();
+            update(timeElapsed);
             if ( framesSkipped++ >= frameSkip ) {
                 draw();
                 ++fps ;
@@ -273,42 +607,42 @@ void Game::run() {
             fps = 0 ;
         }
         // sleep?
-        SDL_Delay( 1 );
+//        SDL_Delay( 1 );
     }
 }
 
-void Game::update() {
-    if (keys[SDLK_UP]) { // up, move player forward, ie. increase speed
+void Game::update(float timeElapsed) {
+    if (keys[SDLK_UP] || keys[SDLK_w]) { // up, move player forward
       player.speed = 1;
     }
-    else if (keys[SDLK_DOWN]) { // down, move player backward, set negative speed
+    else if (keys[SDLK_DOWN] || keys[SDLK_s]) { // down, move player backward
       player.speed = -1;
     }
     else {
       player.speed = 0; // stop moving
     }
-    
-    if (keys[SDLK_LEFT]) { // left, rotate player left
+
+    if (keys[SDLK_LEFT] || keys[SDLK_a]) { // left, rotate player left
       player.dir = -1;
     }
-    else if (keys[SDLK_RIGHT]) { // right, rotate player right
+    else if (keys[SDLK_RIGHT] || keys[SDLK_d]) { // right, rotate player right
       player.dir = 1;
     }
     else {
       player.dir = 0; // stop rotating
     }
-    
     updatePlayer();
+    updateProjectiles(timeElapsed);
 }
 
 void Game::drawMiniMap() {
   SDL_Rect miniMapRect;
-  miniMapRect.x = 0; 
+  miniMapRect.x = 0;
   miniMapRect.y = MINIMAP_Y ;
   miniMapRect.w = MAP_WIDTH * MINIMAP_SCALE;
   miniMapRect.h = MAP_HEIGHT * MINIMAP_SCALE;
   fillRect(&miniMapRect, 0, 0, 0);
-  
+
   for (int y=0; y<MAP_HEIGHT; ++y) {
     for (int x=0; x<MAP_WIDTH; ++x) {
       if (g_map[y][x]>0) {
@@ -325,49 +659,141 @@ void Game::drawMiniMap() {
 }
 
 void Game::updatePlayer() {
-  double moveStep = player.speed * player.moveSpeed;
+  float moveStep = player.speed * player.moveSpeed;
   player.rot += -player.dir * player.rotSpeed;
-  int newX = player.x +  cos(player.rot) * moveStep;
-  int newY = player.y + -sin(player.rot) * moveStep;
+  int newX = player.x +  cosine(player.rot) * moveStep;
+  int newY = player.y + -sine(player.rot) * moveStep;
   int wallX = newX / TILE_SIZE;
   int wallY = newY / TILE_SIZE;
-  if (wallHit(wallX, wallY)) {
+  if (isWallCell(wallX, wallY)) {
     return;
   }
   player.x = newX;
   player.y = newY;
 }
 
-void Game::drawFloorAndCeiling() {
-  SDL_Rect srcrect;
-  srcrect.x = 0;
-  srcrect.y = 0;
-  srcrect.w = 640;
-  srcrect.h = 200;
-  
-  SDL_Rect ceilingRect;
-  ceilingRect.x = 0;
-  ceilingRect.y = 0;
-  ceilingRect.w = DISPLAY_WIDTH;
-  ceilingRect.h = DISPLAY_HEIGHT/2;
-  fillRect(&ceilingRect, 56, 56, 56 );
-  
-  SDL_Rect floorRect;
-  floorRect.x = 0;
-  floorRect.y = DISPLAY_HEIGHT/2;
-  floorRect.w = DISPLAY_WIDTH;
-  floorRect.h = DISPLAY_HEIGHT/2;
-//  fillRect(&floorRect, 112, 112, 112 );
-  SDL_RenderCopy(renderer, floorTexture, &srcrect, &floorRect);
+bool needsCleanUp (const Sprite& sprite) {
+  return sprite.cleanup;
+}
+
+bool isKillableSprite(int textureid) {
+  return textureid >= 3 && textureid <= 8;
+}
+
+void Game::updateProjectiles(float timeElapsed) {
+
+  sprites.erase( remove_if(sprites.begin(), sprites.end(), needsCleanUp),
+                 sprites.end() );
+
+  float projectileSpeed = player.moveSpeed * 3;
+  float moveStep = 1 * projectileSpeed;
+  while (!projectilesQueue.empty()) {
+    Sprite newProjectile = projectilesQueue.front();
+    if (newProjectile.textureID != SpriteTypeProjectileSplash) {
+      int newX = newProjectile.x +  cosine(newProjectile.rot) *player.moveSpeed;
+      int newY = newProjectile.y + -sine(newProjectile.rot) *player.moveSpeed;
+      newProjectile.x = newX;
+      newProjectile.y = newY;
+    }
+    else {
+      newProjectile.frame = 0;
+      newProjectile.frameRate = 200;
+    }
+    sprites.push_back(newProjectile);
+    projectilesQueue.pop();
+  }
+  for (vector<Sprite>::iterator it=sprites.begin();
+       it!=sprites.end(); ++it) {
+    Sprite& projectile = *it;
+    if (projectile.textureID == SpriteTypeProjectileSplash) {
+      projectile.frameRate -= timeElapsed;
+      if (projectile.frameRate <= 0) {
+        projectile.cleanup = true;
+      }
+      continue;
+    }
+    if (isKillableSprite(projectile.textureID)) {
+      if (projectile.frameRate) {
+        projectile.frameRate -= timeElapsed;
+        if (projectile.frameRate <= 0) {
+          projectile.hidden = true;
+        }
+      }
+      continue;
+    }
+    if (projectile.textureID != SpriteTypeProjectile)
+    {
+      continue;
+    }
+    int newX = projectile.x +  cosine(projectile.rot) * moveStep;
+    int newY = projectile.y + -sine(projectile.rot) * moveStep;
+    int wallX = newX / TILE_SIZE;
+    int wallY = newY / TILE_SIZE;
+
+    bool wallHit = false;
+    bool outOfBounds = false;
+    bool hitOtherSprite = false;
+    if (isWallCell(wallX, wallY)) {
+      newX = projectile.x +  cosine(projectile.rot) * moveStep/4;
+      newY = projectile.y + -sine(projectile.rot) * moveStep/4;
+      wallX = newX / TILE_SIZE;
+      wallY = newY / TILE_SIZE;
+      if (isWallCell(wallX, wallY)) {
+        if (!projectile.cleanup) {
+          addProjectile(SpriteTypeProjectileSplash, projectile.x, projectile.y,
+                        TILE_SIZE, projectile.rot);
+          Mix_PlayChannel( -1, projectileExplodeSound, 0 );
+        }
+        projectile.cleanup = true;
+        wallHit = true;
+      }
+    }
+
+    if (wallHit) {
+    }
+    else if (newX<0 || newX>MAP_WIDTH*TILE_SIZE ||
+             newY<0 || newY>MAP_HEIGHT*TILE_SIZE) {
+      outOfBounds = true;
+      projectile.cleanup = true;
+    }
+
+    if (!wallHit && !outOfBounds)
+    {
+      vector<Sprite*> spritesHit = findSpritesInCell(wallX, wallY);
+      for (vector<Sprite*>::iterator it=spritesHit.begin();
+           it!=spritesHit.end(); ++it)
+      {
+        Sprite* spriteHit = *it;
+        if (isKillableSprite(spriteHit->textureID) && !spriteHit->hidden) {
+          if (spriteHit->frameRate==0) {
+            spriteHit->frameRate = 200;
+            hitOtherSprite = true;
+            if (!projectile.cleanup) {
+              projectile.cleanup = true;
+              addProjectile(SpriteTypeProjectileSplash, projectile.x,
+                            projectile.y, TILE_SIZE, projectile.rot);
+              Mix_PlayChannel( -1, projectileExplodeSound, 0 );
+            }
+          }
+        }
+      }
+    }
+
+    if (!wallHit && !outOfBounds && !hitOtherSprite)
+    {
+      projectile.x = newX;
+      projectile.y = newY;
+    }
+  }
 }
 
 void Game::drawPlayer() {
   SDL_Rect playerRect;
-  
-  double playerX =  (double)player.x / (MAP_WIDTH*TILE_SIZE) * 100;
+
+  float playerX =  (float)player.x / (MAP_WIDTH*TILE_SIZE) * 100;
   playerX = playerX/100 * MINIMAP_SCALE * MAP_WIDTH;
-  
-  double playerY =  (double)player.y / (MAP_HEIGHT*TILE_SIZE) * 100;
+
+  float playerY =  (float)player.y / (MAP_HEIGHT*TILE_SIZE) * 100;
   playerY = playerY/100 * MINIMAP_SCALE * MAP_HEIGHT;
 
   playerRect.x = playerX - 2 ;
@@ -375,20 +801,38 @@ void Game::drawPlayer() {
   playerRect.w = 5;
   playerRect.h = 5;
   fillRect(&playerRect, 255, 0, 0);
-  
-  double lineEndX = playerX +  cos(player.rot) * 4 * MINIMAP_SCALE;
-  double lineEndY = playerY + -sin(player.rot) * 4 * MINIMAP_SCALE;
-  
-  drawLine(playerX, playerY + MINIMAP_Y, lineEndX, lineEndY + MINIMAP_Y, 255, 0, 0);
+
+  float lineEndX = playerX +  cosine(player.rot) * 4 * MINIMAP_SCALE;
+  float lineEndY = playerY + -sine(player.rot) * 4 * MINIMAP_SCALE;
+
+  drawLine(playerX, playerY+MINIMAP_Y, lineEndX, lineEndY+MINIMAP_Y, 255, 0, 0);
 }
 
-void Game::drawRay(double rayX, double rayY) {
-  int startY = DISPLAY_HEIGHT + 44 /*padding*/;
-  
-  double playerX =  (double)player.x / (MAP_WIDTH*TILE_SIZE) * 100;
+void Game::drawMiniMapSprites() {
+  for (vector<Sprite>::iterator it=sprites.begin(); it!=sprites.end(); ++it)
+  {
+    Sprite* sprite = &*it;
+    float spriteX =  (float)sprite->x / (MAP_WIDTH*TILE_SIZE) * 100;
+    spriteX = spriteX/100 * MINIMAP_SCALE * MAP_WIDTH;
+
+    float spriteY =  (float)sprite->y / (MAP_HEIGHT*TILE_SIZE) * 100;
+    spriteY = spriteY/100 * MINIMAP_SCALE * MAP_HEIGHT;
+
+    SDL_Rect rc;
+    rc.x = spriteX - 2 ;
+    rc.y = spriteY - 2 + MINIMAP_Y;
+    rc.w = 5;
+    rc.h = 5;
+    fillRect(&rc, 0, 255, 255);
+  }
+
+}
+
+void Game::drawRay(float rayX, float rayY) {
+  float playerX =  (float)player.x / (MAP_WIDTH*TILE_SIZE) * 100;
   playerX = playerX/100 * MINIMAP_SCALE * MAP_WIDTH;
-  
-  double playerY =  (double)player.y / (MAP_HEIGHT*TILE_SIZE) * 100;
+
+  float playerY =  (float)player.y / (MAP_HEIGHT*TILE_SIZE) * 100;
   playerY = playerY/100 * MINIMAP_SCALE * MAP_HEIGHT;
 
   rayX = rayX / (MAP_WIDTH*TILE_SIZE) * 100.0;
@@ -396,43 +840,243 @@ void Game::drawRay(double rayX, double rayY) {
   rayY = rayY / (MAP_HEIGHT*TILE_SIZE) * 100.0;
   rayY = rayY/100.0 * MINIMAP_SCALE * MAP_HEIGHT;
 
-  drawLine(playerX, playerY + MINIMAP_Y, rayX, rayY + MINIMAP_Y, 0, 100, 0, 0.3*255);
+  drawLine(playerX, playerY+MINIMAP_Y, rayX, rayY+MINIMAP_Y,0,100,0,0.3*255);
 }
 
-void Game::drawRays(std::vector<WallHit>& wallHits) {
-   for (int i=0; i<wallHits.size(); ++i) {
-    WallHit wallHit = wallHits[i];
-    drawRay(wallHit.x, wallHit.y);
+void Game::drawRays(vector<RayHit>& rayHits) {
+   for (int i=0; i<(int)rayHits.size(); ++i) {
+    RayHit rayHit = rayHits[i];
+    if (rayHit.wallType && rayHit.level==0) {
+      drawRay(rayHit.x, rayHit.y);
+    }
   }
 }
 
-void Game::drawWalls(std::vector<WallHit>& wallHits) {
-  for (int i=0; i<wallHits.size(); ++i) {
-    WallHit wallHit = wallHits[i];
-
-    // distorted_dist = correct_dist / cos(relative_angle_of_ray)
-    double dist = wallHit.distance * cos( player.rot - wallHit.rayAngle );
-
-    // "real" wall height in the game world is 1 unit, the distance from the player to the screen is viewDist,
-    // thus the height on the screen is equal to wall_height_real * viewDist / dist
-    int wallScreenHeight = round(viewDist / dist*TILE_SIZE);
-
-    double sx = (wallHit.horizontal?TEXTURE_SIZE:0) + (wallHit.tileX/TILE_SIZE*TEXTURE_SIZE);
-    double sy = TEXTURE_SIZE * (wallHit.wallType-1);
-    drawWallStrip(sx, sy, wallHit.strip, wallScreenHeight);
-  }
-}
-
-void Game::drawWallStrip(double textureX, double textureY, int stripIdx, int wallScreenHeight)
+void Game::drawFloor(vector<RayHit>& rayHits)
 {
-  double sx = textureX;
-  double sy = textureY;
-  double swidth = 1;
-  double sheight = TEXTURE_SIZE;
-  double imgx = stripIdx * STRIP_WIDTH;
-  double imgy = (DISPLAY_HEIGHT - wallScreenHeight)/2;
-  double imgw = STRIP_WIDTH;
-  double imgh = wallScreenHeight;
+  // If floor texture mapping off, just draw a solid color
+  if (!drawTexturedFloorOn) {
+    SDL_Rect rc;
+    rc.x = 0;
+    rc.y = DISPLAY_HEIGHT/2;
+    rc.w = DISPLAY_WIDTH;
+    rc.h = DISPLAY_HEIGHT/2;
+    fillRect(&rc, 52, 158, 0);
+    return;
+  }
+  streamingTexture.lockTexture();
+  Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
+  bool skipEven = true;
+  for (int i=0; i<(int)rayHits.size(); ++i) {
+    RayHit rayHit = rayHits[i];
+
+    // Must be a wall, not a sprite
+    if (!rayHit.wallType) {
+      continue;
+    }
+
+    if (skipEven && rayHit.strip%2==0) {
+      continue;
+    }
+
+    int wallScreenHeight = round(viewDist / rayHit.straightDistance*TILE_SIZE);
+    int screenX = rayHit.strip;
+    int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 + wallScreenHeight;
+    float eyeHeight = TILE_SIZE / 2;
+    float centerPlane = DISPLAY_HEIGHT / 2;
+    for (screenY++; screenY<DISPLAY_HEIGHT; screenY++)
+    {
+      float ratio= eyeHeight/(screenY-centerPlane);
+      float diagonalDistance = (float)viewDist * (float)ratio;
+
+      // To correct for fisheye effect
+      float straightDistance = diagonalDistance *
+                               (1/cos(player.rot-rayHit.rayAngle));
+
+      float xEnd = (straightDistance *  cosine(rayHit.rayAngle));
+      float yEnd = (straightDistance * -sine(rayHit.rayAngle));
+      yEnd += player.y;
+      xEnd += player.x;
+      int x = (int)(yEnd*2) % TILE_SIZE;
+      int y = (int)(xEnd*2) % TILE_SIZE;
+      int tileX = xEnd / TILE_SIZE;
+      int tileY = yEnd / TILE_SIZE;
+      int floorTileType = g_floormap[ tileY ][ tileX ];
+      Uint32* pix = (Uint32*) floorBitmap.getPixels();
+      switch (floorTileType) {
+        case 1: pix = (Uint32*) floorBitmap2.getPixels(); break;
+        case 2: pix = (Uint32*) floorBitmap3.getPixels(); break;
+        case 3: pix = (Uint32*) waterBitmap.getPixels(); break;
+        case 4: pix = (Uint32*) mossyCobbleBitmap.getPixels(); break;
+      }
+      int dstPixel = screenX + screenY * DISPLAY_WIDTH;
+      int srcPixel = y * floorBitmap.getWidth() + x;
+      streamingPixels[dstPixel] = pix[srcPixel];
+
+      // An even pixel was skipped, make up for it here
+      if (skipEven && (screenX+1)<DISPLAY_WIDTH) {
+        streamingPixels[dstPixel+1] = pix[srcPixel];
+      }
+    }
+  }
+  SDL_Rect rc;
+  rc.x = 0;
+  rc.y = DISPLAY_HEIGHT/2;
+  rc.w = DISPLAY_WIDTH;
+  rc.h = DISPLAY_HEIGHT/2;
+
+  // You MUST unlock the texture before usign SDL_RenderCopy on it
+  streamingTexture.unlockTexture();
+  SDL_RenderCopy(renderer, streamingTexture.getTexture(), &rc,&rc);
+}
+
+void Game::drawCeiling(vector<RayHit>& rayHits)
+{
+  if (!drawCeilingOn) {
+    return;
+  }
+  streamingTexture.lockTexture();
+  Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
+
+  bool skipEven = true;
+  memset( streamingPixels, 0, DISPLAY_WIDTH*DISPLAY_HEIGHT*sizeof(Uint32));
+
+  for (int i=0; i<(int)rayHits.size(); i++) {
+    RayHit rayHit = rayHits[i];
+    // Must be a wall, not a sprite
+    if (!rayHit.wallType) {
+      continue;
+    }
+
+    if (skipEven && rayHit.strip%2==0) {
+      continue;
+    }
+    int wallScreenHeight = round(viewDist / rayHit.straightDistance*TILE_SIZE);
+    int screenX = rayHit.strip;
+    int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 - 1;
+    float eyeHeight = TILE_SIZE / 2;
+    float centerPlane = DISPLAY_HEIGHT / 2;
+    for (screenY--;screenY>=0;screenY--)
+    {
+      float ceilingHeight = TILE_SIZE * 2;
+      float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
+      float diagonalDistance = (float)viewDist * (float)ratio;
+
+      // To correct for fisheye effect
+      float straightDistance = diagonalDistance *
+                               (1/cos(player.rot-rayHit.rayAngle));
+
+      float xEnd = (straightDistance *  cosine(rayHit.rayAngle));
+      float yEnd = (straightDistance * -sine(rayHit.rayAngle));
+      yEnd += player.y;
+      xEnd += player.x;
+
+      bool outOfBounds = false;
+      if (xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE) {
+        outOfBounds = true;
+      }
+      if (yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE) {
+        outOfBounds = true;
+      }
+
+      int x = (int)(yEnd) % TILE_SIZE;
+      int y = (int)(xEnd) % TILE_SIZE;
+      int tileX = xEnd / TILE_SIZE;
+      int tileY = yEnd / TILE_SIZE;
+
+      int tileType = outOfBounds ? 0 : g_ceilingmap[ tileY ][ tileX ];
+      int dstPixel = screenX + screenY * DISPLAY_WIDTH;
+      int srcPixel = y * floorBitmap.getWidth() + x;
+
+      Uint32* pix = NULL;
+      if (tileType) {
+        pix = (Uint32*) ceilingBitmap.getPixels();
+        streamingPixels[dstPixel] = pix[srcPixel];
+        if (skipEven) {
+          streamingPixels[dstPixel+1] = pix[srcPixel];
+        }
+      }
+      else {
+        streamingPixels[dstPixel] = ceilingColor;
+        if (skipEven && (screenX+1)<DISPLAY_WIDTH ) {
+          streamingPixels[dstPixel + 1] = ceilingColor;
+        }
+      }
+    }
+  }
+  SDL_Rect rc;
+  rc.x = 0;
+  rc.y = 0;
+  rc.w = DISPLAY_WIDTH;
+  rc.h = DISPLAY_HEIGHT/2;
+
+  // You MUST unlock the texture before usign SDL_RenderCopy on it
+  streamingTexture.unlockTexture();
+  SDL_RenderCopy(renderer, streamingTexture.getTexture(), &rc,&rc);
+
+}
+void Game::drawWorld(vector<RayHit>& rayHits)
+{
+  std::sort(rayHits.begin(), rayHits.end(), rayHitCompare);
+
+  drawFloor(rayHits);
+  drawCeiling(rayHits);
+
+  //-----------------------
+  // Draw Walls and Sprites
+  //-----------------------
+  if (!drawWallsOn) {
+    return;
+  }
+  for (int i=0; i<(int)rayHits.size(); ++i) {
+    RayHit rayHit = rayHits[i];
+
+    // Wall
+    if (rayHit.wallType) {
+      int wallScreenHeight = round(viewDist/rayHit.straightDistance*TILE_SIZE);
+      float sx = (rayHit.horizontal?TEXTURE_SIZE:0) +
+                 (rayHit.tileX/TILE_SIZE*TEXTURE_SIZE);
+      if (sx >= TEXTURE_SIZE*2) {
+        sx = TEXTURE_SIZE*2 - 1;
+      }
+      float sy = TEXTURE_SIZE * (rayHit.wallType-1);
+      // Ground Level
+      if (rayHit.level == 0) {
+        drawWallStrip(sx, sy, rayHit.strip, wallScreenHeight);
+      }
+      // Level 1
+      else {
+        drawWallStrip(sx, sy, rayHit.strip, wallScreenHeight, 1, 1);
+      }
+    }
+    // Sprite
+    else if (rayHit.sprite && !rayHit.sprite->hidden) {
+      SDL_Rect dstRect;
+      SurfaceTexture* spriteSurfaceTexture = NULL;
+      std::map<int,SurfaceTexture>::iterator i =
+        spriteTextures.find(rayHit.sprite->textureID);
+      if (i == spriteTextures.end()) {
+        continue;
+      }
+      spriteSurfaceTexture = &spriteTextures[rayHit.sprite->textureID];
+      SDL_Texture* spriteTexture = spriteSurfaceTexture->getTexture();
+      dstRect = findSpriteScreenPosition( *rayHit.sprite  );
+      SDL_RenderCopy(renderer, spriteTexture, NULL, &dstRect);
+    }
+  }
+}
+
+void Game::drawWallStrip(float textureX, float textureY, int stripIdx,
+                         int wallScreenHeight, int floors, int level)
+{
+  float sx = textureX;
+  float sy = textureY;
+  float swidth = 1;
+  float sheight = TEXTURE_SIZE;
+  float imgx = stripIdx * STRIP_WIDTH;
+  float imgy = (DISPLAY_HEIGHT - wallScreenHeight)/2;
+  float imgw = STRIP_WIDTH;
+  float imgh = wallScreenHeight;
 
   SDL_Rect srcrect;
   srcrect.x = sx;
@@ -446,32 +1090,115 @@ void Game::drawWallStrip(double textureX, double textureY, int stripIdx, int wal
   dstrect.w = imgw;
   dstrect.h = imgh;
 
-  SDL_RenderCopy(renderer, wallTexture, &srcrect, &dstrect);
-}
-
-void Game::raycast(std::vector<WallHit>& wallHits) {
-  int stripIdx = 0;
-  for (int i=0;i<RAYCOUNT;i++, stripIdx++) {
-    // where on the screen does ray go through?
-    double rayScreenPos = (RAYCOUNT/2 - i) * STRIP_WIDTH;
-
-    // the distance from the viewer to the point on the screen, simply Pythagoras.
-    double rayViewDist = sqrt(rayScreenPos*rayScreenPos + viewDist*viewDist);
-
-    // the angle of the ray, relative to the viewing direction.
-    // right triangle: a = sin(A) * c
-    double rayAngle = asin(rayScreenPos / rayViewDist);
-
-    WallHit wallHit = calculateWallHit(player.x, player.y, player.rot + rayAngle, stripIdx);
-    if ( wallHit.distance ) {
-      wallHits.push_back(wallHit);
-    }
+  if (level) {
+    dstrect.h++;
+  }
+  dstrect.y -= level * wallScreenHeight;
+  SDL_RenderCopy(renderer, wallsImage.getTexture(), &srcrect, &dstrect);
+  while (floors-- > 1) {
+    dstrect.y -= wallScreenHeight;
+    SDL_RenderCopy(renderer, wallsImage.getTexture(), &srcrect, &dstrect);
   }
 }
 
-WallHit Game::calculateWallHit(int playerX, int playerY,
-                               double rayAngle, int stripIdx)
+vector<Sprite*> Game::findSpritesInCell(int cellX, int cellY)
 {
+  vector<Sprite*> spritesFound;
+  for (vector<Sprite>::iterator it=sprites.begin(); it!=sprites.end(); ++it) {
+    Sprite* sprite = &*it;
+    if (cellX == (sprite->x/TILE_SIZE) && cellY == (sprite->y/TILE_SIZE) ) {
+      spritesFound.push_back(sprite);
+    }
+  }
+  return spritesFound;
+}
+
+// Algorithm here taken from this link but I use unit circle rotation instead.
+// https://dev.opera.com/articles/3d-games-with-canvas-and-raycasting-part-2/
+SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
+{
+  // Translate position to viewer space
+  float dx = sprite.x - player.x;
+  float dy = sprite.y - player.y;
+
+  // Distance to sprite
+  float dist = sqrt(dx*dx + dy*dy);
+
+  float spriteAngle = atan2(dy, dx) + player.rot;
+
+  // Size of the sprite
+  float size = (float)viewDist / (cos(spriteAngle) * dist);
+  size = size * TILE_SIZE;
+
+  // X-position on screen
+  float x = tan(spriteAngle) * viewDist;
+
+  SDL_Rect rc;
+  rc.x = (DISPLAY_WIDTH/2) + x - (size/2);
+  rc.y = (DISPLAY_HEIGHT - size)/2.0f;
+  rc.w = size;
+  rc.h = size;
+  return rc;
+}
+
+void Game::raycastWorld(vector<RayHit>& rayHits)
+{
+  int stripIdx = 0;
+  vector<Sprite*> spritesFound;
+  for (int i=0;i<RAYCOUNT;i++, stripIdx++) {
+    float rayScreenPos = (RAYCOUNT/2 - i) * STRIP_WIDTH;
+    float rayViewDist = sqrt(rayScreenPos*rayScreenPos + viewDist*viewDist);
+    const float rayAngle = asin(rayScreenPos / rayViewDist);
+
+    // Ground level Walls and Sprites
+    vector<RayHit> rayHitsFound = raycast(g_map, player.x, player.y,
+                                               player.rot + rayAngle,
+                                               stripIdx, false, true);
+    for (size_t j=0; j<rayHitsFound.size(); ++j) {
+      RayHit rayHit = rayHitsFound[ j ];
+      if ( rayHit.distance ) {
+        // Wall found
+        if (rayHit.wallType) {
+          rayHits.push_back(rayHit);
+        }
+        // Sprite found
+        else {
+          bool addedAlready = std::find(spritesFound.begin(),
+                                        spritesFound.end(),  rayHit.sprite) !=
+                                        spritesFound.end();
+          if (!addedAlready) {
+            spritesFound.push_back(rayHit.sprite);
+            rayHits.push_back(rayHit);
+          }
+        }
+      }
+    }
+
+    // 2nd Level Walls
+    if (drawCeilingOn) {
+      rayHitsFound = raycast(g_map2, player.x, player.y, player.rot + rayAngle,
+                             stripIdx, true, false);
+      for (vector<RayHit>::iterator it=rayHitsFound.begin();
+           it!=rayHitsFound.end(); ++it) {
+        RayHit& rayhit = *it;
+        rayhit.level = 1;
+        if (rayhit.wallType && rayhit.distance) {
+          rayHits.push_back(*it);
+        } // if
+      } // for
+    } // drawCeilingOn
+  }
+}
+
+vector<RayHit> Game::raycast(int grid[][MAP_WIDTH],
+                                  int playerX, int playerY,
+                                  float rayAngle, int stripIdx,
+                                  bool lookForMultipleWalls,
+                                  bool lookForSprites,
+                                  vector<RayHit>* wallsToIgnore )
+{
+  vector<RayHit> hits;
+
   while (rayAngle < 0) rayAngle += TWO_PI;
   while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
 
@@ -479,26 +1206,39 @@ WallHit Game::calculateWallHit(int playerX, int playerY,
               (rayAngle>TWO_PI*0.75); // Quadrant 4
   bool up    = rayAngle<TWO_PI*0.5  && rayAngle>=0; // Quadrant 1 and 2
 
-  int wallType = 0;
-  double tileX; // the x-coord on the texture of the block, ie. what part of the texture are we going to render
+  float texX=0; // x-coordinate of texture pixel to render
 
-  double dist = 0; // the distance to the block we hit
-  double xHit = 0; // the x and y coord of where the ray hit the block
-  double yHit = 0;
-
-  int wallHitX = 0;
-  int wallHitY = 0;
-
-  bool wallHorizontal = false;
+  //----------------------------------------
+  // Check player's current tile for sprites
+  //----------------------------------------
+  vector<Sprite*> spritesHit;
+  int currentTileX = player.x / TILE_SIZE;
+  int currentTileY = player.y / TILE_SIZE;
+  if (lookForSprites) {
+    vector<Sprite*> spritesFound = findSpritesInCell( currentTileX,
+                                                           currentTileY );
+    for (size_t i=0; i<spritesFound.size(); ++i) {
+      Sprite* sprite = spritesFound[ i ];
+      bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
+                                    sprite) != spritesHit.end();
+      if (!addedAlready) {
+        const float distX = player.x - sprite->x;
+        const float distY = player.y - sprite->y;
+        const float blockDist = distX*distX + distY*distY;
+        sprite->distance = sqrt(blockDist);
+        spritesHit.push_back(sprite);
+      }
+    }
+  }
 
   //--------------------------
-  //
   // Vertical Lines Checking
-  //
   //--------------------------
+  float verticalLineDistance = 0;
+  RayHit verticalWallHit;
 
   // Find x coordinate of vertical lines on the right and left
-  double vx = 0;
+  float vx = 0;
   if (right) {
     vx = floor(playerX/TILE_SIZE) * TILE_SIZE + TILE_SIZE;
   }
@@ -508,51 +1248,94 @@ WallHit Game::calculateWallHit(int playerX, int playerY,
 
   // Calculate y coordinate of those lines
   // lineY = playerY + (playerX-lineX)*tan(ALPHA);
-  double vy = playerY + (playerX-vx)*tan(rayAngle);
+  float vy = playerY + (playerX-vx)*tan(rayAngle);
 
   // Calculate stepping vector for each line
-  double stepx = right ? TILE_SIZE : -TILE_SIZE;
-  double stepy = TILE_SIZE * tan(rayAngle);
+  float stepx = right ? TILE_SIZE : -TILE_SIZE;
+  float stepy = TILE_SIZE * tan(rayAngle);
 
-  // tan() returns positive values in Quadrant 1 and Quadrant 4
-  // But window coordinates need negative coordinates for Y-axis so we reverse them
+  // tan() returns positive values in Quadrant 1 and Quadrant 4 but window
+  // coordinates need negative coordinates for Y-axis so we reverse
   if ( right ) {
     stepy = -stepy;
   }
 
-  while (vx >= 0 && vx < MAP_WIDTH*TILE_SIZE && vy >= 0 && vy < MAP_HEIGHT*TILE_SIZE) {
+  while (vx>=0 && vx<MAP_WIDTH*TILE_SIZE && vy>=0 && vy<MAP_HEIGHT*TILE_SIZE) {
     int wallY = floor(vy / TILE_SIZE);
     int wallX = floor(vx / TILE_SIZE);
-    if (g_map[wallY][wallX] > 0) {
-      double distX = playerX - vx;
-      double distY = playerY - vy;
-      double blockDist = distX*distX + distY*distY;
-      dist = blockDist;
-      xHit = vx;
-      yHit = vy;
-      wallHitX = wallX;
-      wallHitY = wallY;
-      wallType = g_map[wallY][wallX];
-      tileX = fmod(vy, TILE_SIZE);
 
-      // Facing left, flip image
-      if (!right) {
-        tileX = TILE_SIZE - tileX;
+    // Look for sprites in current cell
+    if (lookForSprites) {
+      vector<Sprite*> spritesFound = findSpritesInCell( wallX, wallY );
+      for (size_t i=0; i<spritesFound.size(); ++i) {
+        Sprite* sprite = spritesFound[ i ];
+        bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
+                                      sprite) != spritesHit.end();
+        if (!addedAlready) {
+          const float distX = player.x - sprite->x;
+          const float distY = player.y - sprite->y;
+          const float blockDist = distX*distX + distY*distY;
+          sprite->distance = sqrt(blockDist);
+          spritesHit.push_back(sprite);
+
+          RayHit spriteRayHit(vx, vy, rayAngle);
+          spriteRayHit.strip = stripIdx;
+          if (sprite->distance) {
+            spriteRayHit.distance = sprite->distance;
+            spriteRayHit.straightDistance = spriteRayHit.distance *
+                                            cos(player.rot-rayAngle);
+          }
+          spriteRayHit.wallType = 0;
+          spriteRayHit.sprite = sprite;
+          spriteRayHit.distance = sprite->distance;
+          hits.push_back( spriteRayHit );
+        }
       }
-      break;
     }
+
+    // Skip walls requested to be ignored
+    if (wallsToIgnore && isWallInRayHits(*wallsToIgnore, wallX, wallY)) {
+    }
+
+    // Check if current cell is a wall
+    else if (grid[wallY][wallX] > 0) {
+      const float distX = playerX - vx;
+      const float distY = playerY - vy;
+      const float blockDist = distX*distX + distY*distY;
+      texX = fmod(vy, TILE_SIZE);
+      texX = right ? texX : TILE_SIZE - texX; // Facing left, flip image
+
+      RayHit rayHit(vx, vy, rayAngle);
+      rayHit.strip = stripIdx;
+      rayHit.wallType = grid[wallY][wallX];
+      rayHit.wallX = wallX;
+      rayHit.wallY = wallY;
+      if (blockDist) {
+        rayHit.distance = sqrt(blockDist);
+        rayHit.straightDistance = rayHit.distance * cos(player.rot-rayAngle);
+      }
+      rayHit.horizontal = false;
+      rayHit.tileX = texX;
+
+      if (false == lookForMultipleWalls) {
+        verticalWallHit = rayHit;
+        verticalLineDistance = blockDist;
+        break;
+      }
+      hits.push_back( rayHit );
+    }
+
     vx += stepx;
     vy += stepy;
   }
 
   //--------------------------
-  //
   // Horizontal Lines Checking
-  //
   //--------------------------
+  float horizontalLineDistance = 0;
 
   // Find y coordinate of horizontal lines on the right and left
-  double hy = 0;
+  float hy = 0;
   if (up) {
     hy = floor(playerY/TILE_SIZE) * TILE_SIZE - 1;
   }
@@ -562,59 +1345,103 @@ WallHit Game::calculateWallHit(int playerX, int playerY,
 
   // Calculation x coordinate of horizontal line
   // lineX = playerX + (playerY-lineY)/tan(ALPHA);
-  double hx = playerX + (playerY-hy) / tan(rayAngle);
+  float hx = playerX + (playerY-hy) / tan(rayAngle);
   stepy = up ? -TILE_SIZE : TILE_SIZE;
   stepx = TILE_SIZE / tan(rayAngle);
 
   // tan() returns stepx as positive in quadrant 3 and negative in quadrant 4
-  // This is the opposite of window coordinates so we need to reverse when angle is facing down
+  // This is the opposite of window coordinates so we need to reverse when
+  // angle is facing down
   if ( !up ) {
     stepx = -stepx;
   }
 
-  while (hx >= 0 && hx < MAP_WIDTH*TILE_SIZE && hy >= 0 && hy < MAP_HEIGHT*TILE_SIZE) {
+  while (hx>=0 && hx<MAP_WIDTH*TILE_SIZE && hy>=0 && hy<MAP_HEIGHT*TILE_SIZE) {
     int wallY = floor(hy / TILE_SIZE);
     int wallX = floor(hx / TILE_SIZE);
 
-    if (g_map[wallY][wallX] > 0) {
-      double distX = playerX - hx;
-      double distY = playerY - hy;
-      double blockDist = distX*distX + distY*distY;
-      if (!dist || blockDist < dist) {
-        dist = blockDist;
-        xHit = hx;
-        yHit = hy;
-        wallHitX = wallX;
-        wallHitY = wallY;
-        wallType = g_map[wallY][wallX];
-        tileX =  fmod(hx, TILE_SIZE);
-        wallHorizontal = true;
+    // Look for sprites in current cell
+    if (lookForSprites) {
+      vector<Sprite*> spritesFound = findSpritesInCell( wallX, wallY );
+      for (size_t i=0; i<spritesFound.size(); ++i) {
+        Sprite* sprite = spritesFound[ i ];
+        bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
+                                      sprite) != spritesHit.end();
+        if (!addedAlready) {
+          const float distX = player.x - sprite->x;
+          const float distY = player.y - sprite->y;
+          const float blockDist = distX*distX + distY*distY;
+          sprite->distance = sqrt(blockDist);
+          spritesHit.push_back(sprite);
 
-        // Facing down, flip image
-        if (!up) {
-          tileX = TILE_SIZE - tileX;
+          RayHit spriteRayHit(hx, hy, rayAngle);
+          spriteRayHit.strip = stripIdx;
+          if (sprite->distance) {
+            spriteRayHit.distance = sprite->distance;
+            spriteRayHit.straightDistance = spriteRayHit.distance *
+                                            cos(player.rot-rayAngle);
+          }
+          spriteRayHit.wallType = 0;
+          spriteRayHit.sprite = sprite;
+          spriteRayHit.distance = sprite->distance;
+          hits.push_back( spriteRayHit );
         }
       }
-      break;
+    }
+
+    if (wallsToIgnore && isWallInRayHits(*wallsToIgnore, wallX, wallY)) {
+    }
+
+    // Check if current cell is a wall
+    else if (grid[wallY][wallX] > 0) {
+      const float distX = playerX - hx;
+      const float distY = playerY - hy;
+      const float blockDist = distX*distX + distY*distY;
+
+      // If horizontal distance is less than vertical line distance, stop
+      if (false==lookForMultipleWalls) {
+        if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
+          break;
+        }
+      }
+
+      texX =  fmod(hx, TILE_SIZE);
+      texX = up ? texX : TILE_SIZE - texX; // Facing down, flip image
+
+      RayHit rayHit(hx, hy, rayAngle);
+      rayHit.strip = stripIdx;
+      rayHit.wallType = grid[wallY][wallX];
+      rayHit.wallX = wallX;
+      rayHit.wallY = wallY;
+      if (blockDist) {
+        rayHit.distance = sqrt(blockDist);
+        rayHit.straightDistance = rayHit.distance * cos(player.rot-rayAngle);
+      }
+      rayHit.horizontal = true;
+      rayHit.tileX = texX;
+      horizontalLineDistance = blockDist;
+      hits.push_back( rayHit );
+
+      if (false == lookForMultipleWalls) {
+        break;
+      }
     }
     hx += stepx;
     hy += stepy;
   }
 
-  WallHit wallHit;
-  wallHit.strip = stripIdx;
-  wallHit.x = xHit;
-  wallHit.y = yHit;
-  wallHit.wallType = wallType;
-  wallHit.wallX = wallHitX;
-  wallHit.wallY = wallHitY;
-  wallHit.distance = sqrt(dist);
-  wallHit.horizontal = wallHorizontal;
-  wallHit.tileX = tileX;
-  wallHit.rayAngle = rayAngle;
-  return wallHit;
+  // Choose the shortest distance if looking for nearest wall
+  if (false==lookForMultipleWalls) {
+    if (!horizontalLineDistance && verticalLineDistance) {
+      assert(verticalWallHit.distance!=0);
+      hits.push_back(verticalWallHit);
+    }
+  }
+
+  return hits;
 }
-bool Game::wallHit(int x, int y) {
+
+bool Game::isWallCell(int x, int y) {
   // first make sure that we cannot move outside the boundaries of the level
   if (y < 0 || y >= MAP_HEIGHT || x < 0 || x >= MAP_WIDTH)
     return true;
@@ -632,6 +1459,33 @@ void Game::onKeyUp( SDL_Event* evt ) {
     switch(evt->key.keysym.sym) {
       case SDLK_m: {
         drawMiniMapOn = !drawMiniMapOn;
+        printf("drawMiniMapOn = %s\n", drawMiniMapOn?"true":"false");
+        break;
+      }
+      case SDLK_r: {
+        reset();
+        printf("Game reset!\n");
+        break;
+      }
+      case SDLK_f: {
+        drawTexturedFloorOn = !drawTexturedFloorOn;
+        printf("drawTexturedFloorOn = %s\n",drawTexturedFloorOn?"true":"false");
+        break;
+      }
+      case SDLK_c: {
+        drawCeilingOn = !drawCeilingOn;
+        printf("drawCeilingOn = %s\n", drawCeilingOn?"true":"false");
+        break;
+      }
+      case SDLK_1: {
+        drawWallsOn = !drawWallsOn;
+        printf("drawWallsOn = %s\n", drawWallsOn?"true":"false");
+        break;
+      }
+      case SDLK_SPACE: {
+        Mix_PlayChannel( -1, projectileFireSound, 0 );
+        addProjectile(SpriteTypeProjectile, player.x, player.y, TILE_SIZE,
+                      player.rot);
         break;
       }
     }

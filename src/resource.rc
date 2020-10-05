@@ -1,0 +1,2 @@
+#include "resource.h"
+ID_MANIFEST MANIFEST "..\\res\\sdl2-raycast.exe.manifest"

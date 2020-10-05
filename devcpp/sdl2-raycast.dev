@@ -4,14 +4,14 @@ Name=sdl2-raycast
 Type=1
 Ver=2
 ObjFiles=
-Includes=..\SDL2-2.0.12\i686-w64-mingw32\include
-Libs=..\SDL2-2.0.12\i686-w64-mingw32\lib
-PrivateResource=
+Includes=..\SDL2-2.0.12\i686-w64-mingw32\include;..\\SDL2_mixer-2.0.4\i686-w64-mingw32\include\SDL2;..\SDL2-2.0.12\i686-w64-mingw32\include\SDL2
+Libs=..\\SDL2_mixer-2.0.4\i686-w64-mingw32\lib;..\SDL2-2.0.12\i686-w64-mingw32\lib
+PrivateResource=sdl2-raycast_private.rc
 ResourceIncludes=
 MakeIncludes=
 Compiler=
-CppCompiler=
-Linker=-lmingw32 -lSDL2main -lSDL2_@@_
+CppCompiler=-Wall_@@_-pedantic_@@_-O2_@@_
+Linker=-lmingw32 _@@_-lSDL2main _@@_-lSDL2_@@_-lSDL2_mixer_@@_
 IsCpp=1
 Icon=
 ExeOutput=..\bin
@@ -29,7 +29,7 @@ IncludeVersionInfo=0
 SupportXPThemes=0
 CompilerSet=3
 CompilerSettings=0000000100000000000000000
-UnitCount=1
+UnitCount=5
 
 [VersionInfo]
 Major=1
@@ -52,6 +52,45 @@ SyncProduct=1
 
 [Unit1]
 FileName=..\src\main.cpp
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit2]
+FileName=..\src\resource.rc
+Folder=Resources
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit3]
+FileName=..\src\resource.h
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit4]
+FileName=..\src\sdl2utils.h
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit5]
+FileName=..\src\sdl2utils.cpp
 CompileCpp=1
 Folder=
 Compile=1

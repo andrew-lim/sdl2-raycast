@@ -4,13 +4,14 @@
 CPP      = g++.exe
 CC       = gcc.exe
 WINDRES  = windres.exe
-OBJ      = ../src/main.o
-LINKOBJ  = ../src/main.o
-LIBS     = -L"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/lib32" -static-libgcc -L"../SDL2-2.0.12/i686-w64-mingw32/lib" -lmingw32 -lSDL2main -lSDL2 -m32
-INCS     = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include" -I"../SDL2-2.0.12/i686-w64-mingw32/include"
-CXXINCS  = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include/c++" -I"../SDL2-2.0.12/i686-w64-mingw32/include"
+RES      = sdl2-raycast_private.res
+OBJ      = ../src/main.o ../src/sdl2utils.o $(RES)
+LINKOBJ  = ../src/main.o ../src/sdl2utils.o $(RES)
+LIBS     = -L"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/lib32" -static-libgcc -L"..//SDL2_mixer-2.0.4/i686-w64-mingw32/lib" -L"../SDL2-2.0.12/i686-w64-mingw32/lib" -lmingw32  -lSDL2main  -lSDL2 -lSDL2_mixer -m32
+INCS     = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include" -I"../SDL2-2.0.12/i686-w64-mingw32/include" -I"..//SDL2_mixer-2.0.4/i686-w64-mingw32/include/SDL2" -I"../SDL2-2.0.12/i686-w64-mingw32/include/SDL2"
+CXXINCS  = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include/c++" -I"../SDL2-2.0.12/i686-w64-mingw32/include" -I"..//SDL2_mixer-2.0.4/i686-w64-mingw32/include/SDL2" -I"../SDL2-2.0.12/i686-w64-mingw32/include/SDL2"
 BIN      = ../bin/sdl2-raycast.exe
-CXXFLAGS = $(CXXINCS) -m32
+CXXFLAGS = $(CXXINCS) -m32 -Wall -pedantic -O2
 CFLAGS   = $(INCS) -m32
 RM       = rm.exe -f
 
@@ -26,3 +27,10 @@ $(BIN): $(OBJ)
 
 ../src/main.o: ../src/main.cpp
 	$(CPP) -c ../src/main.cpp -o ../src/main.o $(CXXFLAGS)
+
+../src/sdl2utils.o: ../src/sdl2utils.cpp
+	$(CPP) -c ../src/sdl2utils.cpp -o ../src/sdl2utils.o $(CXXFLAGS)
+
+sdl2-raycast_private.res: sdl2-raycast_private.rc ../src/resource.rc
+	$(WINDRES) -i sdl2-raycast_private.rc -F pe-i386 --input-format=rc -o sdl2-raycast_private.res -O coff 
+
