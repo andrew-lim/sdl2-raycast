@@ -5,6 +5,8 @@ But there are many more features now including floor/ceiling texture mapping, sp
 
 You can see a [video of it here](https://www.youtube.com/watch?v=fEDtU9okUxA).
 
+Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/tag/2).
+
 ## Screenshots
 <img src="res/screenshot1_800x600.jpg" width="50%"/>
 <img src="res/screenshot2_800x600.jpg" width="50%"/>
