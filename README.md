@@ -4,7 +4,9 @@ This was originally a port of [my HTML5 canvas version here](https://github.com/
 But there are many more features now including floor/ceiling texture mapping, sprites and projectiles.
 
 ## Screenshots
-![](res/screenshot1_800x600.jpg)
+<img src="res/screenshot1_800x600.jpg" width="50%"/>
+<img src="res/screenshot2_800x600.jpg" width="50%"/>
+<img src="res/screenshot3_800x600.jpg" width="50%"/>
 
 ## Building
 You will need SDL2 and SDL2_mixer.
