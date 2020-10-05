@@ -1,19 +1,33 @@
-# SDL2 Raycast Demo
-A Wolfenstein 3D style raycaster using C++ and SDL2.
+# SDL2 Raycasting Demo
 
-This is a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast).
+This was originally a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast).
+But there are many more features now including floor/ceiling texture mapping, sprites and projectiles.
 
-Wall and gun textures are from Sporbs High Resolution Texture Pack by Kev Reid.
-
-You can download the [Windows Demo here](https://github.com/andrew-lim/sdl2-raycast/releases/)
+## Screenshots
+![](res/screenshot1_800x600.jpg)
 
 ## Building
+You will need SDL2 and SDL2_mixer.
+
 SDL2 version used is SDL2-devel-2.0.12-mingw.tar.gz.
 https://www.libsdl.org/download-2.0.php
+
+SDL2_mixer version used is SDL2_mixer-devel-2.0.4-mingw.tar.gz
+https://www.libsdl.org/projects/SDL_mixer/
 
 So far I've only tested this with Dev-C++ 5.11
 https://sourceforge.net/projects/orwelldevcpp/
 
-## Screenshot
-![](res/screenshot800x600.png)
+## Asset Credits
 
+Sounds and images are from these OpenGameArt links:
+
+https://opengameart.org/content/first-person-dungeon-crawl-protagonist
+
+https://opengameart.org/content/lab-sprites
+
+https://opengameart.org/content/first-person-dungeon-crawl-art-pack
+
+https://opengameart.org/content/2-high-quality-explosions
+
+https://opengameart.org/content/4-projectile-launches
