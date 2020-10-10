@@ -29,7 +29,7 @@ IncludeVersionInfo=0
 SupportXPThemes=0
 CompilerSet=3
 CompilerSettings=0000000100000000000000000
-UnitCount=6
+UnitCount=7
 
 [VersionInfo]
 Major=1
@@ -100,7 +100,17 @@ OverrideBuildCmd=0
 BuildCmd=
 
 [Unit6]
-FileName=..\src\raycaster.h
+FileName=..\src\raycasting.cpp
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit7]
+FileName=..\src\raycasting.h
 CompileCpp=1
 Folder=
 Compile=1
