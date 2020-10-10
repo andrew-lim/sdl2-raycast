@@ -1,10 +1,13 @@
 /*
-SDL2 raycasting example in the style of Wolfenstein 3D.
+SDL2 raycasting demo.
 Author: Andrew Lim Chong Liang
 https://github.com/andrew-lim
 
 Linker settings
--lmingw32 -lSDL2main -lSDL2
+-lmingw32 -lSDL2main -lSDL2 -lSDL2_mixer
+
+Recommended compiler settings
+-Wall -pedantic -O2
 */
 #include <SDL.h>
 #include <SDL_mixer.h>
@@ -19,8 +22,10 @@ Linker settings
 #include <ctime>
 #include <queue>
 #include <windows.h>
+#include "raycasting.h"
 
 using namespace al::sdl2utils;
+using namespace al::raycasting;
 using namespace std;
 
 // Length of a wall or cell in game units.
@@ -32,74 +37,14 @@ const int DISPLAY_WIDTH = 800;
 const int DISPLAY_HEIGHT = 600;
 const int MINIMAP_SCALE = 6;
 const int MINIMAP_Y = 0; // position of minimap from top of screen
-const int TARGET_FPS = 30;
-const int UPDATE_INTERVAL = 1000/TARGET_FPS;
-const int STRIP_WIDTH = 1;
+const int DESIRED_FPS = 60;
+const int UPDATE_INTERVAL = 1000/DESIRED_FPS;
+const int STRIP_WIDTH = 1; // TODO: fix this so that it can be more than 1
 const int FOV_DEGREES = 75;
 const float FOV_RADIANS = (float)FOV_DEGREES * M_PI / 180; // FOV in radians
 const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH;
 const float viewDist = (DISPLAY_WIDTH/2) / tan((FOV_RADIANS / 2));
 const float TWO_PI = M_PI*2;
-
-class Sprite;
-
-// Holds information about a wall hit from a single ray
-struct RayHit {
-  float x, y;      // wall position in game units
-  int wallX, wallY; // wall position in column, row tile units
-  int wallType;     // type of wall hit
-  int strip;        // strip on screen for this wall
-  float tileX;     // x-coordinate within tile, used for calculating texture x
-  float distance;  // distance to wall
-  float straightDistance; // fisheye correction distance
-  bool horizontal;  // true if wall was hit on the bottom or top
-  float rayAngle;  // angle used for calculation
-  Sprite* sprite; // a sprite was hit
-  int level; // ground level (0) or some other level.
-  RayHit(int worldX=0, int worldY=0, float angle=0)
-  : x(worldX), y(worldY), rayAngle(angle) {
-    wallType = strip = wallX = wallY = tileX = distance = 0;
-    straightDistance = 0;
-    horizontal = false;
-    level = 0;
-  }
-};
-
-// Objects further away are drawn first using this
-struct RayHitCompare
-{
-    bool operator() (RayHit a, RayHit b)
-    {
-        return a.distance > b.distance;
-    }
-} rayHitCompare;
-
-class Sprite {
-public:
-    int x, y ;
-    int w, h ;
-    int dir;         // -1 for left or 1 for right.
-    float rot;       // rotation (counterclockwise is positive)
-    int speed;       // forward (speed = 1) or backwards (speed = -1).
-    int moveSpeed;   // how far (in map units) to move each step/update
-    float rotSpeed;  // rotation speed (in radians)
-    float distance;  // used for z-buffer calculation
-    int textureID;
-    bool cleanup;
-    int frameRate;
-    int frame;
-    bool hidden;
-    Sprite() :x(0), y(0), w(0), h(0), dir(0), rot(0), speed(0) {
-      moveSpeed = TILE_SIZE / (TARGET_FPS/60.0f*16);
-      rotSpeed = (4) * M_PI/180;
-      distance = 0;
-      textureID = 0;
-      cleanup = false;
-      frameRate = 0;
-      frame = 0;
-      hidden = false;
-    }
-} ;
 
 const int MAP_WIDTH = 32;
 const int MAP_HEIGHT = 24;
@@ -130,6 +75,15 @@ static int g_map[MAP_HEIGHT][MAP_WIDTH] = {
   {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
   {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
 };
+
+void array2DToVector(int arr[MAP_HEIGHT][MAP_WIDTH], std::vector<int>& out) {
+  out.clear();
+  for (int y=0; y<MAP_HEIGHT; y++) {
+    for (int x=0; x<MAP_WIDTH; x++) {
+      out.push_back(arr[y][x]);
+    }
+  }
+}
 
 
 static int g_map2[MAP_HEIGHT][MAP_WIDTH] = {
@@ -255,16 +209,6 @@ static int g_spritemap[MAP_HEIGHT][MAP_WIDTH] = {
   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-bool isWallInRayHits( vector<RayHit>& rayHits, int cellX, int cellY ) {
-  for (vector<RayHit>::iterator it=rayHits.begin(); it!=rayHits.end();
-       ++it) {
-    RayHit& rayHit = *it;
-    if (rayHit.wallType && rayHit.wallX==cellX && rayHit.wallY==cellY) {
-      return true;
-    }
-  }
-  return false;
-}
 
 class Game {
 public:
@@ -296,20 +240,17 @@ public:
     void drawWallStrip(float textureX, float textureY, int stripIdx,
                        int wallScreenHeight, int floors=1, int level=0);
     void drawWorld(vector<RayHit>& rayHits);
-    vector<RayHit> raycast( int grid[][MAP_WIDTH],
-                                 int playerX, int playerY, float rayAngle,
-                                 int stripIdx, bool penetrate=false,
-                                 bool lookForSprites=false,
-                                 vector<RayHit>* wallsToIgnore=NULL );
     void raycastWorld(vector<RayHit>& rayHits);
     bool isWallCell(int wallX, int wallY);
-    vector<Sprite*> findSpritesInCell(int cellX, int cellY);
     SDL_Rect findSpriteScreenPosition( Sprite& sprite );
     void addSpriteAt( int spriteid, int cellX, int cellY );
     void addProjectile(int textureid, int x, int y, int size, float rotation);
     float sine(float f);
     float cosine(float f);
 private:
+    Raycaster raycaster1; // for ground / level 1 walls & sprites
+    Raycaster raycaster2; // for ceiling / level 2 walls
+    std::vector<int> groundWalls;
     std::map<int,int> keys; // store keydown presses
     int frameSkip ;
     int running ;
@@ -377,9 +318,21 @@ Game::~Game() {
 
 void Game::reset()
 {
+  raycaster1.gridWidth = MAP_WIDTH;
+  raycaster1.gridHeight = MAP_HEIGHT;
+  raycaster1.tileSize = TILE_SIZE;
+  array2DToVector(g_map, raycaster1.grid);
+  
+  raycaster2.gridWidth = MAP_WIDTH;
+  raycaster2.gridHeight = MAP_HEIGHT;
+  raycaster2.tileSize = TILE_SIZE;
+  array2DToVector(g_map2, raycaster2.grid);
+  
   player.x = 28 * TILE_SIZE;
   player.y = 12 * TILE_SIZE;
   player.rot = 0;
+  player.moveSpeed = TILE_SIZE / (DESIRED_FPS/60.0f*16);
+  player.rotSpeed = (4) * M_PI/180;
 
   sprites.clear();
   for (int y=0; y<MAP_HEIGHT; y++) {
@@ -759,7 +712,9 @@ void Game::updateProjectiles(float timeElapsed) {
 
     if (!wallHit && !outOfBounds)
     {
-      vector<Sprite*> spritesHit = findSpritesInCell(wallX, wallY);
+      vector<Sprite*> spritesHit =
+        Raycaster::findSpritesInCell(sprites, wallX, wallY, TILE_SIZE);
+
       for (vector<Sprite*>::iterator it=spritesHit.begin();
            it!=spritesHit.end(); ++it)
       {
@@ -1017,7 +972,7 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
 }
 void Game::drawWorld(vector<RayHit>& rayHits)
 {
-  std::sort(rayHits.begin(), rayHits.end(), rayHitCompare);
+  std::sort(rayHits.begin(), rayHits.end());
 
   drawFloor(rayHits);
   drawCeiling(rayHits);
@@ -1101,18 +1056,6 @@ void Game::drawWallStrip(float textureX, float textureY, int stripIdx,
   }
 }
 
-vector<Sprite*> Game::findSpritesInCell(int cellX, int cellY)
-{
-  vector<Sprite*> spritesFound;
-  for (vector<Sprite>::iterator it=sprites.begin(); it!=sprites.end(); ++it) {
-    Sprite* sprite = &*it;
-    if (cellX == (sprite->x/TILE_SIZE) && cellY == (sprite->y/TILE_SIZE) ) {
-      spritesFound.push_back(sprite);
-    }
-  }
-  return spritesFound;
-}
-
 // Algorithm here taken from this link but I use unit circle rotation instead.
 // https://dev.opera.com/articles/3d-games-with-canvas-and-raycasting-part-2/
 SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
@@ -1145,15 +1088,18 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
 {
   int stripIdx = 0;
   vector<Sprite*> spritesFound;
+  
   for (int i=0;i<RAYCOUNT;i++, stripIdx++) {
     float rayScreenPos = (RAYCOUNT/2 - i) * STRIP_WIDTH;
     float rayViewDist = sqrt(rayScreenPos*rayScreenPos + viewDist*viewDist);
-    const float rayAngle = asin(rayScreenPos / rayViewDist);
+    
+    // Relative angle between strip and player
+    const float stripAngle = asin(rayScreenPos / rayViewDist);
 
     // Ground level Walls and Sprites
-    vector<RayHit> rayHitsFound = raycast(g_map, player.x, player.y,
-                                               player.rot + rayAngle,
-                                               stripIdx, false, true);
+    vector<RayHit> rayHitsFound;
+    raycaster1.raycast(rayHitsFound, player.x, player.y, player.rot, stripAngle,
+                      stripIdx, false, &sprites);
     for (size_t j=0; j<rayHitsFound.size(); ++j) {
       RayHit rayHit = rayHitsFound[ j ];
       if ( rayHit.distance ) {
@@ -1176,8 +1122,9 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
 
     // 2nd Level Walls
     if (drawCeilingOn) {
-      rayHitsFound = raycast(g_map2, player.x, player.y, player.rot + rayAngle,
-                             stripIdx, true, false);
+      vector<RayHit> rayHitsFound;
+      raycaster2.raycast(rayHitsFound, player.x, player.y, player.rot,
+                               stripAngle, stripIdx, true, NULL);
       for (vector<RayHit>::iterator it=rayHitsFound.begin();
            it!=rayHitsFound.end(); ++it) {
         RayHit& rayhit = *it;
@@ -1190,256 +1137,7 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
   }
 }
 
-vector<RayHit> Game::raycast(int grid[][MAP_WIDTH],
-                                  int playerX, int playerY,
-                                  float rayAngle, int stripIdx,
-                                  bool lookForMultipleWalls,
-                                  bool lookForSprites,
-                                  vector<RayHit>* wallsToIgnore )
-{
-  vector<RayHit> hits;
 
-  while (rayAngle < 0) rayAngle += TWO_PI;
-  while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
-
-  bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
-              (rayAngle>TWO_PI*0.75); // Quadrant 4
-  bool up    = rayAngle<TWO_PI*0.5  && rayAngle>=0; // Quadrant 1 and 2
-
-  float texX=0; // x-coordinate of texture pixel to render
-
-  //----------------------------------------
-  // Check player's current tile for sprites
-  //----------------------------------------
-  vector<Sprite*> spritesHit;
-  int currentTileX = player.x / TILE_SIZE;
-  int currentTileY = player.y / TILE_SIZE;
-  if (lookForSprites) {
-    vector<Sprite*> spritesFound = findSpritesInCell( currentTileX,
-                                                           currentTileY );
-    for (size_t i=0; i<spritesFound.size(); ++i) {
-      Sprite* sprite = spritesFound[ i ];
-      bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                    sprite) != spritesHit.end();
-      if (!addedAlready) {
-        const float distX = player.x - sprite->x;
-        const float distY = player.y - sprite->y;
-        const float blockDist = distX*distX + distY*distY;
-        sprite->distance = sqrt(blockDist);
-        spritesHit.push_back(sprite);
-      }
-    }
-  }
-
-  //--------------------------
-  // Vertical Lines Checking
-  //--------------------------
-  float verticalLineDistance = 0;
-  RayHit verticalWallHit;
-
-  // Find x coordinate of vertical lines on the right and left
-  float vx = 0;
-  if (right) {
-    vx = floor(playerX/TILE_SIZE) * TILE_SIZE + TILE_SIZE;
-  }
-  else {
-    vx = floor(playerX/TILE_SIZE) * TILE_SIZE - 1;
-  }
-
-  // Calculate y coordinate of those lines
-  // lineY = playerY + (playerX-lineX)*tan(ALPHA);
-  float vy = playerY + (playerX-vx)*tan(rayAngle);
-
-  // Calculate stepping vector for each line
-  float stepx = right ? TILE_SIZE : -TILE_SIZE;
-  float stepy = TILE_SIZE * tan(rayAngle);
-
-  // tan() returns positive values in Quadrant 1 and Quadrant 4 but window
-  // coordinates need negative coordinates for Y-axis so we reverse
-  if ( right ) {
-    stepy = -stepy;
-  }
-
-  while (vx>=0 && vx<MAP_WIDTH*TILE_SIZE && vy>=0 && vy<MAP_HEIGHT*TILE_SIZE) {
-    int wallY = floor(vy / TILE_SIZE);
-    int wallX = floor(vx / TILE_SIZE);
-
-    // Look for sprites in current cell
-    if (lookForSprites) {
-      vector<Sprite*> spritesFound = findSpritesInCell( wallX, wallY );
-      for (size_t i=0; i<spritesFound.size(); ++i) {
-        Sprite* sprite = spritesFound[ i ];
-        bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                      sprite) != spritesHit.end();
-        if (!addedAlready) {
-          const float distX = player.x - sprite->x;
-          const float distY = player.y - sprite->y;
-          const float blockDist = distX*distX + distY*distY;
-          sprite->distance = sqrt(blockDist);
-          spritesHit.push_back(sprite);
-
-          RayHit spriteRayHit(vx, vy, rayAngle);
-          spriteRayHit.strip = stripIdx;
-          if (sprite->distance) {
-            spriteRayHit.distance = sprite->distance;
-            spriteRayHit.straightDistance = spriteRayHit.distance *
-                                            cos(player.rot-rayAngle);
-          }
-          spriteRayHit.wallType = 0;
-          spriteRayHit.sprite = sprite;
-          spriteRayHit.distance = sprite->distance;
-          hits.push_back( spriteRayHit );
-        }
-      }
-    }
-
-    // Skip walls requested to be ignored
-    if (wallsToIgnore && isWallInRayHits(*wallsToIgnore, wallX, wallY)) {
-    }
-
-    // Check if current cell is a wall
-    else if (grid[wallY][wallX] > 0) {
-      const float distX = playerX - vx;
-      const float distY = playerY - vy;
-      const float blockDist = distX*distX + distY*distY;
-      texX = fmod(vy, TILE_SIZE);
-      texX = right ? texX : TILE_SIZE - texX; // Facing left, flip image
-
-      RayHit rayHit(vx, vy, rayAngle);
-      rayHit.strip = stripIdx;
-      rayHit.wallType = grid[wallY][wallX];
-      rayHit.wallX = wallX;
-      rayHit.wallY = wallY;
-      if (blockDist) {
-        rayHit.distance = sqrt(blockDist);
-        rayHit.straightDistance = rayHit.distance * cos(player.rot-rayAngle);
-      }
-      rayHit.horizontal = false;
-      rayHit.tileX = texX;
-
-      if (false == lookForMultipleWalls) {
-        verticalWallHit = rayHit;
-        verticalLineDistance = blockDist;
-        break;
-      }
-      hits.push_back( rayHit );
-    }
-
-    vx += stepx;
-    vy += stepy;
-  }
-
-  //--------------------------
-  // Horizontal Lines Checking
-  //--------------------------
-  float horizontalLineDistance = 0;
-
-  // Find y coordinate of horizontal lines on the right and left
-  float hy = 0;
-  if (up) {
-    hy = floor(playerY/TILE_SIZE) * TILE_SIZE - 1;
-  }
-  else {
-    hy = floor(playerY/TILE_SIZE) * TILE_SIZE + TILE_SIZE;
-  }
-
-  // Calculation x coordinate of horizontal line
-  // lineX = playerX + (playerY-lineY)/tan(ALPHA);
-  float hx = playerX + (playerY-hy) / tan(rayAngle);
-  stepy = up ? -TILE_SIZE : TILE_SIZE;
-  stepx = TILE_SIZE / tan(rayAngle);
-
-  // tan() returns stepx as positive in quadrant 3 and negative in quadrant 4
-  // This is the opposite of window coordinates so we need to reverse when
-  // angle is facing down
-  if ( !up ) {
-    stepx = -stepx;
-  }
-
-  while (hx>=0 && hx<MAP_WIDTH*TILE_SIZE && hy>=0 && hy<MAP_HEIGHT*TILE_SIZE) {
-    int wallY = floor(hy / TILE_SIZE);
-    int wallX = floor(hx / TILE_SIZE);
-
-    // Look for sprites in current cell
-    if (lookForSprites) {
-      vector<Sprite*> spritesFound = findSpritesInCell( wallX, wallY );
-      for (size_t i=0; i<spritesFound.size(); ++i) {
-        Sprite* sprite = spritesFound[ i ];
-        bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                      sprite) != spritesHit.end();
-        if (!addedAlready) {
-          const float distX = player.x - sprite->x;
-          const float distY = player.y - sprite->y;
-          const float blockDist = distX*distX + distY*distY;
-          sprite->distance = sqrt(blockDist);
-          spritesHit.push_back(sprite);
-
-          RayHit spriteRayHit(hx, hy, rayAngle);
-          spriteRayHit.strip = stripIdx;
-          if (sprite->distance) {
-            spriteRayHit.distance = sprite->distance;
-            spriteRayHit.straightDistance = spriteRayHit.distance *
-                                            cos(player.rot-rayAngle);
-          }
-          spriteRayHit.wallType = 0;
-          spriteRayHit.sprite = sprite;
-          spriteRayHit.distance = sprite->distance;
-          hits.push_back( spriteRayHit );
-        }
-      }
-    }
-
-    if (wallsToIgnore && isWallInRayHits(*wallsToIgnore, wallX, wallY)) {
-    }
-
-    // Check if current cell is a wall
-    else if (grid[wallY][wallX] > 0) {
-      const float distX = playerX - hx;
-      const float distY = playerY - hy;
-      const float blockDist = distX*distX + distY*distY;
-
-      // If horizontal distance is less than vertical line distance, stop
-      if (false==lookForMultipleWalls) {
-        if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
-          break;
-        }
-      }
-
-      texX =  fmod(hx, TILE_SIZE);
-      texX = up ? texX : TILE_SIZE - texX; // Facing down, flip image
-
-      RayHit rayHit(hx, hy, rayAngle);
-      rayHit.strip = stripIdx;
-      rayHit.wallType = grid[wallY][wallX];
-      rayHit.wallX = wallX;
-      rayHit.wallY = wallY;
-      if (blockDist) {
-        rayHit.distance = sqrt(blockDist);
-        rayHit.straightDistance = rayHit.distance * cos(player.rot-rayAngle);
-      }
-      rayHit.horizontal = true;
-      rayHit.tileX = texX;
-      horizontalLineDistance = blockDist;
-      hits.push_back( rayHit );
-
-      if (false == lookForMultipleWalls) {
-        break;
-      }
-    }
-    hx += stepx;
-    hy += stepy;
-  }
-
-  // Choose the shortest distance if looking for nearest wall
-  if (false==lookForMultipleWalls) {
-    if (!horizontalLineDistance && verticalLineDistance) {
-      assert(verticalWallHit.distance!=0);
-      hits.push_back(verticalWallHit);
-    }
-  }
-
-  return hits;
-}
 
 bool Game::isWallCell(int x, int y) {
   // first make sure that we cannot move outside the boundaries of the level

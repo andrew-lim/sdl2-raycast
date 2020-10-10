@@ -29,7 +29,7 @@ IncludeVersionInfo=0
 SupportXPThemes=0
 CompilerSet=3
 CompilerSettings=0000000100000000000000000
-UnitCount=5
+UnitCount=6
 
 [VersionInfo]
 Major=1
@@ -91,6 +91,16 @@ BuildCmd=
 
 [Unit5]
 FileName=..\src\sdl2utils.cpp
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit6]
+FileName=..\src\raycaster.h
 CompileCpp=1
 Folder=
 Compile=1
