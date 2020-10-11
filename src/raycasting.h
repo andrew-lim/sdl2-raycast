@@ -63,7 +63,9 @@ struct RayHit {
 };
 
 /*
-Performs raycasting on a 2D grid.
+Contains static utility functions for raycasting.
+
+An an object also holds information for a 2D grid.
 The grid is stored as a single vector in row-major order.
 The offset is calculated using x + y * width.
 */
@@ -78,7 +80,18 @@ public:
     grid.resize( gridWidth * gridHeight );
   }
   
+  // Distance between player to screen / projection plane
+  static float screenDistance(float screenWidth, float fovRadians);
+
+  // Relative angle between player and a ray column strip
+  static float stripAngle(float screenX, float screenDistance);
+  
+  // Calculate sprite screen rect
+//  static void spriteScreenRect(float playerX, float playerY, float playerRot,
+//                               float screenDistance);
+  
   static bool isWallInRayHits(std::vector<RayHit>& rayHits,int cellX,int cellY);
+
   static std::vector<Sprite*> findSpritesInCell(std::vector<Sprite>& sprites,
                                                 int cellX, int cellY,
                                                 int tileSize);
@@ -94,6 +107,7 @@ public:
                bool lookForMultipleWalls=false,
                std::vector<Sprite>* spritesToLookFor=0,
                std::vector<RayHit>* wallsToIgnore=0 );
+
   static void raycast(std::vector<RayHit>& rayHits,
                       std::vector<int>& grid,
                       int gridWidth, int gridHeight, int tileSize,

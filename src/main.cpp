@@ -28,6 +28,10 @@ using namespace al::sdl2utils;
 using namespace al::raycasting;
 using namespace std;
 
+// increase to boost FPS but reduce rendering quality
+// currently supports values between 1 to 4
+const int STRIP_WIDTH = 2;
+
 // Length of a wall or cell in game units.
 // In the original Wolfenstein 3D it was 8 feet (1 foot = 16 units)
 const int TILE_SIZE = 128;
@@ -39,11 +43,10 @@ const int MINIMAP_SCALE = 6;
 const int MINIMAP_Y = 0; // position of minimap from top of screen
 const int DESIRED_FPS = 60;
 const int UPDATE_INTERVAL = 1000/DESIRED_FPS;
-const int STRIP_WIDTH = 1; // TODO: fix this so that it can be more than 1
 const int FOV_DEGREES = 75;
 const float FOV_RADIANS = (float)FOV_DEGREES * M_PI / 180; // FOV in radians
 const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH;
-const float viewDist = (DISPLAY_WIDTH/2) / tan((FOV_RADIANS / 2));
+const float VIEW_DIST = Raycaster::screenDistance(DISPLAY_WIDTH,FOV_RADIANS);
 const float TWO_PI = M_PI*2;
 
 const int MAP_WIDTH = 32;
@@ -322,12 +325,12 @@ void Game::reset()
   raycaster1.gridHeight = MAP_HEIGHT;
   raycaster1.tileSize = TILE_SIZE;
   array2DToVector(g_map, raycaster1.grid);
-  
+
   raycaster2.gridWidth = MAP_WIDTH;
   raycaster2.gridHeight = MAP_HEIGHT;
   raycaster2.tileSize = TILE_SIZE;
   array2DToVector(g_map2, raycaster2.grid);
-  
+
   player.x = 28 * TILE_SIZE;
   player.y = 12 * TILE_SIZE;
   player.rot = 0;
@@ -344,14 +347,16 @@ void Game::reset()
     }
   }
 }
-  
+
 void Game::start() {
   printf("Resolution   = %d x %d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
   printf("Map size     = %d x %d\n", MAP_WIDTH, MAP_HEIGHT);
   printf("Wall size    = %d game units\n", TILE_SIZE);
   printf("Texture Size = %d pixels\n", TEXTURE_SIZE);
   printf("FOV          = %d degrees\n", FOV_DEGREES);
-  printf("Distance to Projection Plane = %f\n", viewDist);
+  printf("STRIP_WIDTH  = %d\n", STRIP_WIDTH);
+  printf("RAYCOUNT     = %d\n", RAYCOUNT);
+  printf("Distance to Projection Plane = %f\n", VIEW_DIST);
   int flags = SDL_WINDOW_SHOWN ;
   if (SDL_Init(SDL_INIT_EVERYTHING)) {
       return ;
@@ -395,7 +400,7 @@ void Game::start() {
     return;
   }
   wallsImage.createTexture(renderer);
-  
+
   if (!gunImage.loadBitmap("..\\res\\gun1a.bmp")) {
     printf("Error loading gun image\n");
     return;
@@ -621,6 +626,10 @@ void Game::updatePlayer() {
   if (isWallCell(wallX, wallY)) {
     return;
   }
+  if (g_floormap[wallY][wallX]==3) {
+    // water tile
+    return;
+  }
   player.x = newX;
   player.y = newY;
 }
@@ -821,7 +830,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
   }
   streamingTexture.lockTexture();
   Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
-  bool skipEven = true;
+  bool skipEven = false;
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
 
@@ -834,15 +843,15 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       continue;
     }
 
-    int wallScreenHeight = round(viewDist / rayHit.straightDistance*TILE_SIZE);
-    int screenX = rayHit.strip;
+    int wallScreenHeight = round(VIEW_DIST / rayHit.straightDistance*TILE_SIZE);
+    int screenX = rayHit.strip * STRIP_WIDTH;
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 + wallScreenHeight;
     float eyeHeight = TILE_SIZE / 2;
     float centerPlane = DISPLAY_HEIGHT / 2;
     for (screenY++; screenY<DISPLAY_HEIGHT; screenY++)
     {
       float ratio= eyeHeight/(screenY-centerPlane);
-      float diagonalDistance = (float)viewDist * (float)ratio;
+      float diagonalDistance = (float)VIEW_DIST * (float)ratio;
 
       // To correct for fisheye effect
       float straightDistance = diagonalDistance *
@@ -869,8 +878,14 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       streamingPixels[dstPixel] = pix[srcPixel];
 
       // An even pixel was skipped, make up for it here
-      if (skipEven && (screenX+1)<DISPLAY_WIDTH) {
+      if ((skipEven||STRIP_WIDTH>=2) && (screenX+1)<DISPLAY_WIDTH) {
         streamingPixels[dstPixel+1] = pix[srcPixel];
+      }
+      if ((STRIP_WIDTH>=3) && (screenX+2)<DISPLAY_WIDTH) {
+        streamingPixels[dstPixel+2] = pix[srcPixel];
+      }
+      if ((STRIP_WIDTH>=4) && (screenX+3)<DISPLAY_WIDTH) {
+        streamingPixels[dstPixel+3] = pix[srcPixel];
       }
     }
   }
@@ -893,7 +908,7 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
   streamingTexture.lockTexture();
   Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
 
-  bool skipEven = true;
+  bool skipEven = false;
   memset( streamingPixels, 0, DISPLAY_WIDTH*DISPLAY_HEIGHT*sizeof(Uint32));
 
   for (int i=0; i<(int)rayHits.size(); i++) {
@@ -906,8 +921,8 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
     if (skipEven && rayHit.strip%2==0) {
       continue;
     }
-    int wallScreenHeight = round(viewDist / rayHit.straightDistance*TILE_SIZE);
-    int screenX = rayHit.strip;
+    int wallScreenHeight = round(VIEW_DIST / rayHit.straightDistance*TILE_SIZE);
+    int screenX = rayHit.strip * STRIP_WIDTH;
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 - 1;
     float eyeHeight = TILE_SIZE / 2;
     float centerPlane = DISPLAY_HEIGHT / 2;
@@ -915,7 +930,7 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
     {
       float ceilingHeight = TILE_SIZE * 2;
       float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
-      float diagonalDistance = (float)viewDist * (float)ratio;
+      float diagonalDistance = (float)VIEW_DIST * (float)ratio;
 
       // To correct for fisheye effect
       float straightDistance = diagonalDistance *
@@ -947,14 +962,26 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       if (tileType) {
         pix = (Uint32*) ceilingBitmap.getPixels();
         streamingPixels[dstPixel] = pix[srcPixel];
-        if (skipEven) {
+        if ((skipEven||STRIP_WIDTH>=2) && (screenX+1)<DISPLAY_WIDTH ) {
           streamingPixels[dstPixel+1] = pix[srcPixel];
+        }
+        if ((STRIP_WIDTH>=3) && (screenX+2)<DISPLAY_WIDTH) {
+          streamingPixels[dstPixel+2] = pix[srcPixel];
+        }
+        if ((STRIP_WIDTH>=4) && (screenX+3)<DISPLAY_WIDTH) {
+          streamingPixels[dstPixel+3] = pix[srcPixel];
         }
       }
       else {
         streamingPixels[dstPixel] = ceilingColor;
-        if (skipEven && (screenX+1)<DISPLAY_WIDTH ) {
-          streamingPixels[dstPixel + 1] = ceilingColor;
+        if ((skipEven||STRIP_WIDTH>=2) && (screenX+1)<DISPLAY_WIDTH ) {
+          streamingPixels[dstPixel+1] = ceilingColor;
+        }
+        if ((STRIP_WIDTH>=3) && (screenX+2)<DISPLAY_WIDTH) {
+          streamingPixels[dstPixel+2] = ceilingColor;
+        }
+        if ((STRIP_WIDTH>=4) && (screenX+3)<DISPLAY_WIDTH) {
+          streamingPixels[dstPixel+3] = ceilingColor;
         }
       }
     }
@@ -988,7 +1015,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
     // Wall
     if (rayHit.wallType) {
-      int wallScreenHeight = round(viewDist/rayHit.straightDistance*TILE_SIZE);
+      int wallScreenHeight = round(VIEW_DIST/rayHit.straightDistance*TILE_SIZE);
       float sx = (rayHit.horizontal?TEXTURE_SIZE:0) +
                  (rayHit.tileX/TILE_SIZE*TEXTURE_SIZE);
       if (sx >= TEXTURE_SIZE*2) {
@@ -1069,18 +1096,32 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
 
   float spriteAngle = atan2(dy, dx) + player.rot;
 
-  // Size of the sprite
-  float size = (float)viewDist / (cos(spriteAngle) * dist);
-  size = size * TILE_SIZE;
+  /*
+  // Perpendicular distance
+  cos(angle) = ( adjacent / hypotenuse )
+  adjacent = cos(angle) * hypotenuse
+  sprite distance = cos( spriteAngle ) * sprite direct distance
+  */
+  float spriteDistance = cos(spriteAngle)*dist;
+
+  /*
+  sprite distance         sprite width
+  ----------------- = -------------------
+  screen distance     sprite screen width
+   
+  sprite screen width = sprite width / (sprite distance / screen distance)
+                      = sprite width * (screen distance / sprite distance)
+  */
+  float spriteScreenWidth = TILE_SIZE * VIEW_DIST / spriteDistance;
 
   // X-position on screen
-  float x = tan(spriteAngle) * viewDist;
+  float x = tan(spriteAngle) * VIEW_DIST;
 
   SDL_Rect rc;
-  rc.x = (DISPLAY_WIDTH/2) + x - (size/2);
-  rc.y = (DISPLAY_HEIGHT - size)/2.0f;
-  rc.w = size;
-  rc.h = size;
+  rc.x = (DISPLAY_WIDTH/2) + x - (spriteScreenWidth/2);
+  rc.y = (DISPLAY_HEIGHT - spriteScreenWidth)/2.0f;
+  rc.w = spriteScreenWidth;
+  rc.h = spriteScreenWidth;
   return rc;
 }
 
@@ -1088,13 +1129,10 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
 {
   int stripIdx = 0;
   vector<Sprite*> spritesFound;
-  
+
   for (int i=0;i<RAYCOUNT;i++, stripIdx++) {
-    float rayScreenPos = (RAYCOUNT/2 - i) * STRIP_WIDTH;
-    float rayViewDist = sqrt(rayScreenPos*rayScreenPos + viewDist*viewDist);
-    
-    // Relative angle between strip and player
-    const float stripAngle = asin(rayScreenPos / rayViewDist);
+    float screenX = (RAYCOUNT/2 - i) * STRIP_WIDTH;
+    const float stripAngle = Raycaster::stripAngle(screenX, VIEW_DIST);
 
     // Ground level Walls and Sprites
     vector<RayHit> rayHitsFound;
@@ -1137,15 +1175,13 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
   }
 }
 
-
-
 bool Game::isWallCell(int x, int y) {
   // first make sure that we cannot move outside the boundaries of the level
   if (y < 0 || y >= MAP_HEIGHT || x < 0 || x >= MAP_WIDTH)
     return true;
-
+    
   // return true if the map block is not 0, ie. if there is a blocking wall.
-  return (g_map[y][x] != 0);
+  return (g_map[y][x]!= 0);
 }
 
 void Game::onKeyDown( SDL_Event* evt ) {

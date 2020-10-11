@@ -4,6 +4,50 @@
 using namespace std;
 using namespace al::raycasting;
 
+/*
+ screenWidth
++-----+------+  -
+\     |     /   ^
+ \    |    /    |
+  \   |   /     | screenDistance aka projectionPlaneDistance
+   \  |  /      |
+    \fov/       |
+     \|/        v
+      v         -
+
+tan(angle) = opposite / adjacent
+tan(fov/2) = (screenwidth/2) / screenDistance
+screenDistance = (screenwidth/2) / tan(fov/2)
+*/
+float Raycaster::screenDistance(float screenWidth, float fovRadians){
+  return (screenWidth/2) / tan((fovRadians/2));
+}
+
+/*
+      screenX
+            <------
+            +-----+------+  +-
+            \     |     /   |
+             \    |    /    |
+rayViewDist   \   |   /     | screenDistance aka projectionPlaneDistance
+               \  |  /      |
+                \a| /       |
+                 \|/        |
+                  v         |_
+
+// Pythagoras
+rayViewDist = squareroot(screenX*screenX + screenDistance*screenDistance)
+
+// asin is the reverse of sin
+asin(opposite / hypotenuse) = angle
+angle = asin(opposite / hypotenuse)
+a = asin( screenX / rayViewDist )
+*/
+float Raycaster::stripAngle(float screenX, float screenDistance) {
+    float rayViewDist = sqrt(screenX*screenX +screenDistance*screenDistance);
+    return asin(screenX / rayViewDist);
+}
+
 bool Raycaster::isWallInRayHits(vector<RayHit>& rayHits, int cellX, int cellY) {
   for (vector<RayHit>::iterator it=rayHits.begin(); it!=rayHits.end();
        ++it) {
