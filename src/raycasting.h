@@ -44,7 +44,7 @@ struct RayHit {
   int strip;        // strip on screen for this wall
   float tileX;     // x-coordinate within tile, used for calculating texture x
   float distance;  // distance to wall
-  float straightDistance; // fisheye correction distance
+  float correctDistance; // fisheye correction distance
   bool horizontal;  // true if wall was hit on the bottom or top
   float rayAngle;  // angle used for calculation
   Sprite* sprite; // a sprite was hit
@@ -52,7 +52,7 @@ struct RayHit {
   RayHit(int worldX=0, int worldY=0, float angle=0)
   : x(worldX), y(worldY), rayAngle(angle) {
     wallType = strip = wallX = wallY = tileX = distance = 0;
-    straightDistance = 0;
+    correctDistance = 0;
     horizontal = false;
     level = 0;
   }
@@ -65,7 +65,7 @@ struct RayHit {
 /*
 Contains static utility functions for raycasting.
 
-An an object also holds information for a 2D grid.
+A Raycaster instance  holds information for a 2D grid.
 The grid is stored as a single vector in row-major order.
 The offset is calculated using x + y * width.
 */
@@ -86,10 +86,10 @@ public:
   // Relative angle between player and a ray column strip
   static float stripAngle(float screenX, float screenDistance);
   
-  // Calculate sprite screen rect
-//  static void spriteScreenRect(float playerX, float playerY, float playerRot,
-//                               float screenDistance);
-  
+  // Calculate the screen height of a wall strip.
+  static float stripScreenHeight(float screenDistance, float correctDistance,
+                                 float tileSize);
+
   static bool isWallInRayHits(std::vector<RayHit>& rayHits,int cellX,int cellY);
 
   static std::vector<Sprite*> findSpritesInCell(std::vector<Sprite>& sprites,

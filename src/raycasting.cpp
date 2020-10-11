@@ -48,6 +48,14 @@ float Raycaster::stripAngle(float screenX, float screenDistance) {
     return asin(screenX / rayViewDist);
 }
 
+// Calculate the screen height of a wall strip.
+// Similar triangle principle
+float Raycaster::stripScreenHeight(float screenDistance, float correctDistance,
+                                   float tileSize) {
+  return round(screenDistance / correctDistance*tileSize);                                     
+}
+
+
 bool Raycaster::isWallInRayHits(vector<RayHit>& rayHits, int cellX, int cellY) {
   for (vector<RayHit>::iterator it=rayHits.begin(); it!=rayHits.end();
        ++it) {
@@ -184,7 +192,7 @@ void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
           spriteRayHit.strip = stripIdx;
           if (sprite->distance) {
             spriteRayHit.distance = sprite->distance;
-            spriteRayHit.straightDistance = spriteRayHit.distance *
+            spriteRayHit.correctDistance = spriteRayHit.distance *
                                             cos(stripAngle);
           }
           spriteRayHit.wallType = 0;
@@ -214,7 +222,7 @@ void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
       rayHit.wallY = wallY;
       if (blockDist) {
         rayHit.distance = sqrt(blockDist);
-        rayHit.straightDistance = rayHit.distance * cos(stripAngle);
+        rayHit.correctDistance = rayHit.distance * cos(stripAngle);
       }
       rayHit.horizontal = false;
       rayHit.tileX = texX;
@@ -283,7 +291,7 @@ void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
           spriteRayHit.strip = stripIdx;
           if (sprite->distance) {
             spriteRayHit.distance = sprite->distance;
-            spriteRayHit.straightDistance = spriteRayHit.distance *
+            spriteRayHit.correctDistance = spriteRayHit.distance *
                                             cos(stripAngle);
           }
           spriteRayHit.wallType = 0;
@@ -320,7 +328,7 @@ void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
       rayHit.wallY = wallY;
       if (blockDist) {
         rayHit.distance = sqrt(blockDist);
-        rayHit.straightDistance = rayHit.distance * cos(stripAngle);
+        rayHit.correctDistance = rayHit.distance * cos(stripAngle);
       }
       rayHit.horizontal = true;
       rayHit.tileX = texX;

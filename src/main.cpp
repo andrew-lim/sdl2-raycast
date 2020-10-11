@@ -28,9 +28,10 @@ using namespace al::sdl2utils;
 using namespace al::raycasting;
 using namespace std;
 
+// the longer each raycast strip, the less rays will be used
 // increase to boost FPS but reduce rendering quality
-// currently supports values between 1 to 4
-const int STRIP_WIDTH = 2;
+// currently supports values betweenj 1 to 4
+const int STRIP_WIDTH = 3;
 
 // Length of a wall or cell in game units.
 // In the original Wolfenstein 3D it was 8 feet (1 foot = 16 units)
@@ -843,7 +844,9 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       continue;
     }
 
-    int wallScreenHeight = round(VIEW_DIST / rayHit.straightDistance*TILE_SIZE);
+    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
+                                                        rayHit.correctDistance, 
+                                                        TILE_SIZE);
     int screenX = rayHit.strip * STRIP_WIDTH;
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 + wallScreenHeight;
     float eyeHeight = TILE_SIZE / 2;
@@ -854,11 +857,11 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       float diagonalDistance = (float)VIEW_DIST * (float)ratio;
 
       // To correct for fisheye effect
-      float straightDistance = diagonalDistance *
+      float correctDistance = diagonalDistance *
                                (1/cos(player.rot-rayHit.rayAngle));
 
-      float xEnd = (straightDistance *  cosine(rayHit.rayAngle));
-      float yEnd = (straightDistance * -sine(rayHit.rayAngle));
+      float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
+      float yEnd = (correctDistance * -sine(rayHit.rayAngle));
       yEnd += player.y;
       xEnd += player.x;
       int x = (int)(yEnd*2) % TILE_SIZE;
@@ -921,7 +924,9 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
     if (skipEven && rayHit.strip%2==0) {
       continue;
     }
-    int wallScreenHeight = round(VIEW_DIST / rayHit.straightDistance*TILE_SIZE);
+    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
+                                                        rayHit.correctDistance, 
+                                                        TILE_SIZE);
     int screenX = rayHit.strip * STRIP_WIDTH;
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 - 1;
     float eyeHeight = TILE_SIZE / 2;
@@ -933,11 +938,11 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       float diagonalDistance = (float)VIEW_DIST * (float)ratio;
 
       // To correct for fisheye effect
-      float straightDistance = diagonalDistance *
+      float correctDistance = diagonalDistance *
                                (1/cos(player.rot-rayHit.rayAngle));
 
-      float xEnd = (straightDistance *  cosine(rayHit.rayAngle));
-      float yEnd = (straightDistance * -sine(rayHit.rayAngle));
+      float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
+      float yEnd = (correctDistance * -sine(rayHit.rayAngle));
       yEnd += player.y;
       xEnd += player.x;
 
@@ -1015,7 +1020,9 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
     // Wall
     if (rayHit.wallType) {
-      int wallScreenHeight = round(VIEW_DIST/rayHit.straightDistance*TILE_SIZE);
+      int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
+                                                        rayHit.correctDistance, 
+                                                        TILE_SIZE);
       float sx = (rayHit.horizontal?TEXTURE_SIZE:0) +
                  (rayHit.tileX/TILE_SIZE*TEXTURE_SIZE);
       if (sx >= TEXTURE_SIZE*2) {
