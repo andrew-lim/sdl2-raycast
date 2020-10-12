@@ -857,7 +857,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 + wallScreenHeight;
     float eyeHeight = TILE_SIZE / 2;
     float centerPlane = DISPLAY_HEIGHT / 2;
-    for (screenY++; screenY<DISPLAY_HEIGHT; screenY++)
+    for (; screenY<DISPLAY_HEIGHT; screenY++)
     {
       float ratio= eyeHeight/(screenY-centerPlane);
       float diagonalDistance = (float)VIEW_DIST * (float)ratio;
