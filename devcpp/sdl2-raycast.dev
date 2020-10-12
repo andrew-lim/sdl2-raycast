@@ -10,7 +10,7 @@ PrivateResource=sdl2-raycast_private.rc
 ResourceIncludes=
 MakeIncludes=
 Compiler=
-CppCompiler=-Wall_@@_-pedantic_@@_-O2_@@_
+CppCompiler=-Wall_@@_-pedantic_@@_-O2_@@_-fgcse-after-reload _@@_-fipa-cp-clone_@@_-floop-interchange _@@__@@_-fpeel-loops _@@_-fpredictive-commoning _@@_-ftree-loop-distribution _@@_-ftree-loop-vectorize _@@__@@_-ftree-partial-pre _@@_-funswitch-loops _@@_-fvect-cost-model _@@_-fvect-cost-model=dynamic _@@_
 Linker=-lmingw32 _@@_-lSDL2main _@@_-lSDL2_@@_-lSDL2_mixer_@@_
 IsCpp=1
 Icon=

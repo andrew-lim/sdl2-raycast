@@ -30,8 +30,8 @@ using namespace std;
 
 // the longer each raycast strip, the less rays will be used
 // increase to boost FPS but reduce rendering quality
-// currently supports values betweenj 1 to 4
-const int STRIP_WIDTH = 3;
+// currently supports values from 1 to 4
+const int STRIP_WIDTH = 2;
 
 // Length of a wall or cell in game units.
 // In the original Wolfenstein 3D it was 8 feet (1 foot = 16 units)
@@ -44,7 +44,7 @@ const int MINIMAP_SCALE = 6;
 const int MINIMAP_Y = 0; // position of minimap from top of screen
 const int DESIRED_FPS = 60;
 const int UPDATE_INTERVAL = 1000/DESIRED_FPS;
-const int FOV_DEGREES = 75;
+const int FOV_DEGREES = 90;
 const float FOV_RADIANS = (float)FOV_DEGREES * M_PI / 180; // FOV in radians
 const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH;
 const float VIEW_DIST = Raycaster::screenDistance(DISPLAY_WIDTH,FOV_RADIANS);
@@ -363,6 +363,17 @@ void Game::start() {
       return ;
   }
 
+
+  SDL_version compiled;
+  SDL_version linked;
+
+  SDL_VERSION(&compiled);
+  SDL_GetVersion(&linked);
+  printf("Compiled SDL version = %d.%d.%d\n", compiled.major, compiled.minor,
+         compiled.patch);
+  printf("Linked SDL version   = %d.%d.%d\n",linked.major, linked.minor,
+         linked.patch);
+
   window = SDL_CreateWindow("SDL2 Raycast Engine",
                              SDL_WINDOWPOS_CENTERED,
                             SDL_WINDOWPOS_CENTERED,
@@ -370,7 +381,7 @@ void Game::start() {
                              DISPLAY_HEIGHT,
                              flags);
 
-  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED );
 //  SDL_SetWindowResizable(window, SDL_TRUE );
 //  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
@@ -831,16 +842,11 @@ void Game::drawFloor(vector<RayHit>& rayHits)
   }
   streamingTexture.lockTexture();
   Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
-  bool skipEven = false;
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
 
     // Must be a wall, not a sprite
     if (!rayHit.wallType) {
-      continue;
-    }
-
-    if (skipEven && rayHit.strip%2==0) {
       continue;
     }
 
@@ -880,15 +886,22 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       int srcPixel = y * floorBitmap.getWidth() + x;
       streamingPixels[dstPixel] = pix[srcPixel];
 
-      // An even pixel was skipped, make up for it here
-      if ((skipEven||STRIP_WIDTH>=2) && (screenX+1)<DISPLAY_WIDTH) {
-        streamingPixels[dstPixel+1] = pix[srcPixel];
+      // Clamp the strip width so we don't write out of bounds of  the
+      // streamingPixels. Not sure if this is necessary.
+      int stripWidth = STRIP_WIDTH;
+      while (stripWidth * rayHit.strip >= DISPLAY_WIDTH) {
+        stripWidth--;
       }
-      if ((STRIP_WIDTH>=3) && (screenX+2)<DISPLAY_WIDTH) {
-        streamingPixels[dstPixel+2] = pix[srcPixel];
-      }
-      if ((STRIP_WIDTH>=4) && (screenX+3)<DISPLAY_WIDTH) {
-        streamingPixels[dstPixel+3] = pix[srcPixel];
+
+      switch (stripWidth) {
+        case 4:
+          streamingPixels[dstPixel+3] = pix[srcPixel];
+        case 3:
+          streamingPixels[dstPixel+2] = pix[srcPixel];
+        case 2:
+          streamingPixels[dstPixel+1] = pix[srcPixel];
+        default:
+          break;
       }
     }
   }
@@ -898,7 +911,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
   rc.w = DISPLAY_WIDTH;
   rc.h = DISPLAY_HEIGHT/2;
 
-  // You MUST unlock the texture before usign SDL_RenderCopy on it
+  // You MUST unlock the texture before using SDL_RenderCopy on it
   streamingTexture.unlockTexture();
   SDL_RenderCopy(renderer, streamingTexture.getTexture(), &rc,&rc);
 }
@@ -911,7 +924,6 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
   streamingTexture.lockTexture();
   Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
 
-  bool skipEven = false;
   memset( streamingPixels, 0, DISPLAY_WIDTH*DISPLAY_HEIGHT*sizeof(Uint32));
 
   for (int i=0; i<(int)rayHits.size(); i++) {
@@ -921,9 +933,6 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       continue;
     }
 
-    if (skipEven && rayHit.strip%2==0) {
-      continue;
-    }
     int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
                                                         rayHit.correctDistance, 
                                                         TILE_SIZE);
@@ -963,30 +972,39 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       int dstPixel = screenX + screenY * DISPLAY_WIDTH;
       int srcPixel = y * floorBitmap.getWidth() + x;
 
+      // Clamp the strip width so we don't write out of bounds of  the
+      // streamingPixels. Not sure if this is necessary.
+      int stripWidth = STRIP_WIDTH;
+      while (stripWidth * rayHit.strip >= DISPLAY_WIDTH) {
+        stripWidth--;
+      }
+
       Uint32* pix = NULL;
       if (tileType) {
         pix = (Uint32*) ceilingBitmap.getPixels();
-        streamingPixels[dstPixel] = pix[srcPixel];
-        if ((skipEven||STRIP_WIDTH>=2) && (screenX+1)<DISPLAY_WIDTH ) {
-          streamingPixels[dstPixel+1] = pix[srcPixel];
-        }
-        if ((STRIP_WIDTH>=3) && (screenX+2)<DISPLAY_WIDTH) {
-          streamingPixels[dstPixel+2] = pix[srcPixel];
-        }
-        if ((STRIP_WIDTH>=4) && (screenX+3)<DISPLAY_WIDTH) {
-          streamingPixels[dstPixel+3] = pix[srcPixel];
+        switch (stripWidth) {
+          case 4:
+            streamingPixels[dstPixel+3] = pix[srcPixel];
+          case 3:
+            streamingPixels[dstPixel+2] = pix[srcPixel];
+          case 2:
+            streamingPixels[dstPixel+1] = pix[srcPixel];
+          default:
+            streamingPixels[dstPixel] = pix[srcPixel];
+            break;
         }
       }
       else {
-        streamingPixels[dstPixel] = ceilingColor;
-        if ((skipEven||STRIP_WIDTH>=2) && (screenX+1)<DISPLAY_WIDTH ) {
-          streamingPixels[dstPixel+1] = ceilingColor;
-        }
-        if ((STRIP_WIDTH>=3) && (screenX+2)<DISPLAY_WIDTH) {
-          streamingPixels[dstPixel+2] = ceilingColor;
-        }
-        if ((STRIP_WIDTH>=4) && (screenX+3)<DISPLAY_WIDTH) {
-          streamingPixels[dstPixel+3] = ceilingColor;
+        switch (stripWidth) {
+          case 4:
+            streamingPixels[dstPixel+3] = ceilingColor;
+          case 3:
+            streamingPixels[dstPixel+2] = ceilingColor;
+          case 2:
+            streamingPixels[dstPixel+1] = ceilingColor;
+          default:
+            streamingPixels[dstPixel] = ceilingColor;
+            break;
         }
       }
     }
