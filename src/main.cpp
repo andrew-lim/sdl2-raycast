@@ -143,6 +143,7 @@ private:
     SDL_Texture* screenTexture;
     SDL_Surface* screenSurface;
     int highestCeilingLevel;
+    int rayHitsCount;
 };
 
 float Game::sine(float f) {
@@ -182,6 +183,7 @@ Game::Game()
   drawTexturedFloorOn = true;
   drawCeilingOn = true;
   drawWallsOn = true;
+  rayHitsCount = 0;
 
   reset();
 }
@@ -450,7 +452,8 @@ void Game::drawWeapon() {
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "SDL2 Raycast Demo - %d FPS", fps );
+    sprintf( szFps, "SDL2 Raycast Demo - rayHitsCount=%d - %d FPS",
+     rayHitsCount, fps );
     SDL_SetWindowTitle(window, szFps);
 }
 
@@ -1215,6 +1218,7 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
 void Game::raycastWorld(vector<RayHit>& rayHits)
 {
   vector<Sprite*> spritesFound;
+  rayHitsCount = 0;
   for (int strip=0; strip<RAYCOUNT; strip++) {
     float screenX = (RAYCOUNT/2 - strip) * STRIP_WIDTH;
     const float stripAngle = Raycaster::stripAngle(screenX, VIEW_DIST);
@@ -1222,13 +1226,13 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
     vector<RayHit> rayHitsFound;
     raycaster3D.raycast(rayHitsFound, player.x, player.y, player.rot,
                         stripAngle, strip, &sprites);
-
     for (size_t j=0; j<rayHitsFound.size(); ++j) {
       RayHit rayHit = rayHitsFound[ j ];
       if ( rayHit.distance ) {
         // Wall found
         if (rayHit.wallType) {
           rayHits.push_back(rayHit);
+          rayHitsCount++;
         }
         // Sprite found
         else if (rayHit.sprite) {

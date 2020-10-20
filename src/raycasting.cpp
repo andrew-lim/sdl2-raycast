@@ -134,7 +134,6 @@ void Raycaster::raycast(vector<RayHit>& hits,
   std::vector<int>& groundGrid = grids[0];
   
   for (int level=0; level<(int)grids.size(); ++level) {
-    bool lookForMultipleWalls = level > 0;
     vector<int>& grid = grids[level];
 
     //----------------------------------------
@@ -283,7 +282,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         if (aboveEmptyBlock) {
           aboveEmptyBlock = groundGrid[wallOffset]==0;
         }
-        else if (false == lookForMultipleWalls) {
+        else {
           verticalWallHit = rayHit;
           verticalLineDistance = blockDist;
           break;
@@ -376,7 +375,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
           aboveEmptyBlock = groundGrid[wallOffset]==0;
         }
         // If vertical distance is less than horizontal line distance, stop
-        else if (false==lookForMultipleWalls) {
+        else {
           if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
             break;
           }
@@ -408,7 +407,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         if (aboveEmptyBlock) {
           aboveEmptyBlock = groundGrid[wallOffset]==0;
         }
-        else if (false == lookForMultipleWalls) {
+        else {
           break;
         }
       }
@@ -420,11 +419,9 @@ void Raycaster::raycast(vector<RayHit>& hits,
     }
 
     // Choose the shortest distance if looking for nearest wall
-    if (false==lookForMultipleWalls) {
-      if (!horizontalLineDistance && verticalLineDistance) {
-        verticalWallHit.furthest = true;
-        hits.push_back(verticalWallHit);
-      }
+    if (!horizontalLineDistance && verticalLineDistance) {
+      verticalWallHit.furthest = true;
+      hits.push_back(verticalWallHit);
     }
   }
 }
