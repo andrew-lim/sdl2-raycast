@@ -23,14 +23,15 @@ Recommended compiler settings
 #include <queue>
 #include <windows.h>
 #include "raycasting.h"
+#include "defaults.h"
 
 using namespace al::sdl2utils;
 using namespace al::raycasting;
 using namespace std;
 
-// the longer each raycast strip, the less rays will be used
-// increase to boost FPS but reduce rendering quality
-// currently supports values from 1 to 4
+// The longer each raycast strip, the less rays will be used.
+// Increase this to boost FPS but reduce rendering quality.
+// Currently supports values from 1 to 4.
 const int STRIP_WIDTH = 2;
 
 // Length of a wall or cell in game units.
@@ -42,7 +43,7 @@ const int DISPLAY_WIDTH = 800;
 const int DISPLAY_HEIGHT = 600;
 const int MINIMAP_SCALE = 6;
 const int MINIMAP_Y = 0; // position of minimap from top of screen
-const int DESIRED_FPS = 60;
+const int DESIRED_FPS = 120;
 const int UPDATE_INTERVAL = 1000/DESIRED_FPS;
 const int FOV_DEGREES = 90;
 const float FOV_RADIANS = (float)FOV_DEGREES * M_PI / 180; // FOV in radians
@@ -50,35 +51,8 @@ const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH;
 const float VIEW_DIST = Raycaster::screenDistance(DISPLAY_WIDTH,FOV_RADIANS);
 const float TWO_PI = M_PI*2;
 
-const int MAP_WIDTH = 32;
-const int MAP_HEIGHT = 24;
-
-static int g_map[MAP_HEIGHT][MAP_WIDTH] = {
-  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,3,0,3,0,0,1,1,1,2,1,1,1,1,1,2,1,1,1,2,1,0,0,0,0,0,0,0,0,1},
-  {1,0,0,3,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
-  {1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2},
-  {1,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2},
-  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2},
-  {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,3,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,3,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,3,3,3,0,0,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,4,0,0,4,2,0,2,2,2,2,2,2,2,2,0,2,4,4,0,0,4,0,0,0,0,0,0,0,1},
-  {1,0,0,4,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,4,0,0,0,0,0,0,0,1},
-  {1,0,0,4,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,4,0,0,0,0,0,0,0,1},
-  {1,0,0,4,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,4,0,0,4,0,0,0,0,0,0,0,1},
-  {1,0,0,4,3,3,4,2,2,2,2,2,2,2,2,2,2,2,2,2,4,3,3,4,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};
+const int SKYBOX_WIDTH = 512;
+const int SKYBOX_HEIGHT = 128;
 
 void array2DToVector(int arr[MAP_HEIGHT][MAP_WIDTH], std::vector<int>& out) {
   out.clear();
@@ -88,90 +62,6 @@ void array2DToVector(int arr[MAP_HEIGHT][MAP_WIDTH], std::vector<int>& out) {
     }
   }
 }
-
-
-static int g_map2[MAP_HEIGHT][MAP_WIDTH] = {
-  {1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,3},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {1,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,0}
-};
-
-
-static int g_floormap[MAP_HEIGHT][MAP_WIDTH] = {
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4,4,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4,4,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,0,0,0,0,0,4,4,0},
-  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,3,3,3,2,0,0,0,0,0,4,4,0},
-  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,3,3,3,2,0,0,0,0,0,4,4,0},
-  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,3,3,3,2,0,2,2,2,2,2,1,0},
-  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,2,2,2,2,2,0,2,1,1,1,1,1,1},
-  {0,0,0,0,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-};
-
-static int g_ceilingmap[MAP_HEIGHT][MAP_WIDTH] = {
-                               //15            //23          //31
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0} // 23
-};
 
 typedef enum SpriteType {
   SpriteTypeTree1 = 1,
@@ -186,32 +76,6 @@ typedef enum SpriteType {
   SpriteTypeProjectileSplash = 10
 } SpriteType;
 
-static int g_spritemap[MAP_HEIGHT][MAP_WIDTH] = {
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,1,0,0,0,0,0,0,0,0,3,0,0,0,6,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,2,0,2,0,0},
-  {0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,6,0},
-  {0,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0},
-  {0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,2,0,1,0,0,0,0,2,0,0,0,0,0,0,6,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,2,0,0,0,0,0,0,7,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-  {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-};
 
 
 class Game {
@@ -236,13 +100,14 @@ public:
     void drawWeapon();
     void drawMiniMap();
     void drawMiniMapSprites();
-    void updatePlayer();
+    void updatePlayer(float elapsedTime);
     void updateProjectiles(float elaspedTime);
     void drawPlayer();
     void drawRay(float rayX, float rayY);
     void drawRays(vector<RayHit>& rayHits);
-    void drawWallStrip(float textureX, float textureY, int stripIdx,
-                       int wallScreenHeight, int floors=1, int level=0);
+    void drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
+                       int stripIdx, int wallScreenHeight, int floors=1,
+                       int level=0, bool aboveWall=false);
     void drawWorld(vector<RayHit>& rayHits);
     void raycastWorld(vector<RayHit>& rayHits);
     bool isWallCell(int wallX, int wallY);
@@ -252,8 +117,9 @@ public:
     float sine(float f);
     float cosine(float f);
 private:
-    Raycaster raycaster1; // for ground / level 1 walls & sprites
-    Raycaster raycaster2; // for ceiling / level 2 walls
+    std::vector< std::vector<int> > grids;
+    Raycaster raycaster3D;
+    std::vector<int> ceilingGrid;
     std::vector<int> groundWalls;
     std::map<int,int> keys; // store keydown presses
     int frameSkip ;
@@ -261,18 +127,22 @@ private:
     SDL_Window* window;
     SDL_Renderer* renderer;
     Sprite player;
-    SurfaceTexture wallsImage;
+    SurfaceTexture wallsImage, wallsImageDark;
     SurfaceTexture gunImage;
     vector<Sprite> sprites;
     std::queue<Sprite> projectilesQueue;
     bool drawMiniMapOn, drawTexturedFloorOn, drawCeilingOn, drawWallsOn;
-    Bitmap floorBitmap, floorBitmap2, floorBitmap3,
-                          ceilingBitmap, waterBitmap, mossyCobbleBitmap;
-    StreamingTexture streamingTexture;
+    Bitmap ceilingBitmap;
+    SDL_Surface* skyboxSurface;
     Uint32 ceilingColor;
     Mix_Chunk* projectileFireSound;
     Mix_Chunk* projectileExplodeSound;
     std::map<int,SurfaceTexture> spriteTextures;
+    std::vector<Bitmap> floorCeilingBitmaps;
+    
+    SDL_Texture* screenTexture;
+    SDL_Surface* screenSurface;
+    int highestCeilingLevel;
 };
 
 float Game::sine(float f) {
@@ -322,21 +192,22 @@ Game::~Game() {
 
 void Game::reset()
 {
-  raycaster1.gridWidth = MAP_WIDTH;
-  raycaster1.gridHeight = MAP_HEIGHT;
-  raycaster1.tileSize = TILE_SIZE;
-  array2DToVector(g_map, raycaster1.grid);
+  highestCeilingLevel = 3;
+  
+  raycaster3D.createGrids(MAP_WIDTH, MAP_HEIGHT,highestCeilingLevel, TILE_SIZE);
+  array2DToVector(g_map, raycaster3D.grids[0]);
+  array2DToVector(g_map2, raycaster3D.grids[1]);
+  array2DToVector(g_map3, raycaster3D.grids[2]);
+  
+  grids = raycaster3D.grids;
 
-  raycaster2.gridWidth = MAP_WIDTH;
-  raycaster2.gridHeight = MAP_HEIGHT;
-  raycaster2.tileSize = TILE_SIZE;
-  array2DToVector(g_map2, raycaster2.grid);
+  array2DToVector(g_ceilingmap, ceilingGrid);
 
   player.x = 28 * TILE_SIZE;
   player.y = 12 * TILE_SIZE;
   player.rot = 0;
   player.moveSpeed = TILE_SIZE / (DESIRED_FPS/60.0f*16);
-  player.rotSpeed = (4) * M_PI/180;
+  player.rotSpeed = 1.5 * M_PI/180;
 
   sprites.clear();
   for (int y=0; y<MAP_HEIGHT; y++) {
@@ -385,6 +256,16 @@ void Game::start() {
 //  SDL_SetWindowResizable(window, SDL_TRUE );
 //  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
+  screenTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                                    SDL_TEXTUREACCESS_TARGET, DISPLAY_WIDTH,
+                                    DISPLAY_HEIGHT);
+  
+  screenSurface = SDL_CreateRGBSurface(0, DISPLAY_WIDTH, DISPLAY_HEIGHT, 32,
+                                       0x00FF0000,
+                                       0x0000FF00,
+                                       0x000000FF,
+                                       0xFF000000);
+
   SDL_RendererInfo rendererInfo;
   SDL_GetRendererInfo(renderer, &rendererInfo);
 
@@ -411,6 +292,10 @@ void Game::start() {
     printf("Error loading walls4.bmp\n");
     return;
   }
+  if (!wallsImageDark.loadBitmap("..\\res\\walls4dark.bmp")) {
+    printf("Error loading walls4dark.bmp\n");
+    return;
+  }
   wallsImage.createTexture(renderer);
 
   if (!gunImage.loadBitmap("..\\res\\gun1a.bmp")) {
@@ -421,6 +306,7 @@ void Game::start() {
   SDL_SetColorKey( gunImage.getSurface(), true, colorKey );
   gunImage.createTexture(renderer);
 
+  // Load Sprite Images
   std::map<int,std::string> spriteFilenames;
   spriteFilenames[ SpriteTypeTree1 ] = "tree.bmp";
   spriteFilenames[ SpriteTypeTree2 ] = "tree2.bmp";
@@ -439,22 +325,48 @@ void Game::start() {
     std::string filename = "..\\res\\" + i->second;
     printf("Loading texture image %s\n", filename.c_str());
     SurfaceTexture& surfaceTexture = spriteTextures[textureid];
-    surfaceTexture.loadBitmap(filename.c_str());
+    if (!surfaceTexture.loadBitmap(filename.c_str())) {
+      printf("Error loading %s\n", filename.c_str());
+      return;
+    }
     SDL_SetColorKey( surfaceTexture.getSurface(), true, colorKey );
     surfaceTexture.createTexture(renderer);
   }
 
-  if (!floorBitmap.load( "..\\res\\grass.bmp", renderer, pf)) {
-    printf("floorBitmap failed to load\n");
+  // Load Floors and Ceiling Images
+  std::map<int,std::string> floorCeilingFilenames;
+  floorCeilingFilenames[ 0 ] = "grass.bmp";
+  floorCeilingFilenames[ 1 ] = "texture1.bmp";
+  floorCeilingFilenames[ 2 ] = "texture2.bmp";
+  floorCeilingFilenames[ 3 ] = "texture3.bmp";
+  floorCeilingFilenames[ 4 ] = "texture4.bmp";
+  floorCeilingFilenames[ 5 ] = "default_brick.bmp";
+  floorCeilingFilenames[ 6 ] = "default_aspen_wood.bmp";
+  floorCeilingFilenames[ 7 ] = "water.bmp";
+  floorCeilingFilenames[ 8 ] = "mossycobble.bmp";
+  floorCeilingBitmaps.resize(floorCeilingFilenames.size());
+  for (std::map<int,std::string>::iterator i=floorCeilingFilenames.begin();
+       i!=floorCeilingFilenames.end(); ++i)
+  {
+    int textureid = i->first;
+    std::string filename = "..\\res\\" + i->second;
+    printf("Loading bitmap image %s\n", filename.c_str());
+    Bitmap& bitmap = floorCeilingBitmaps[textureid];
+    if (!bitmap.load(filename.c_str(), renderer, pf)) {
+      printf("Error loading %s\n", filename.c_str());
+      return;
+    }
+  }
+  
+  ceilingBitmap.load("..\\res\\texture1.bmp", renderer, pf);
+  skyboxSurface = SDL_LoadBMP("..\\res\\skybox2.bmp");
+ 
+  if (!skyboxSurface) {
+    printf("Error loading skybox2.bmp\n");
     return;
   }
-  floorBitmap2.load( "..\\res\\default_brick.bmp", renderer, pf );
-  floorBitmap3.load( "..\\res\\default_aspen_wood.bmp", renderer, pf );
-  ceilingBitmap.load( "..\\res\\wall1d.bmp", renderer, pf );
-  waterBitmap.load( "..\\res\\water.bmp", renderer, pf );
-  mossyCobbleBitmap.load( "..\\res\\mossycobble.bmp", renderer, pf );
+   skyboxSurface = SDL_ConvertSurface(skyboxSurface, screenSurface->format, 0);
 
-  streamingTexture.create(window, renderer, pf, DISPLAY_WIDTH, DISPLAY_HEIGHT);
 //  SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
 
   //Initialize SDL_mixer
@@ -475,20 +387,29 @@ void Game::start() {
 
 void Game::draw() {
     // Clear screen
+//    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 139, 185, 249, SDL_ALPHA_OPAQUE );
     SDL_RenderClear(renderer);
+    
+//    SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_TRANSPARENT);
+//    SDL_RenderFillRect(renderer, NULL);
 
     static vector<RayHit> allRayHits;
     allRayHits.clear();
     raycastWorld(allRayHits);
     drawWorld(allRayHits);
+    drawWeapon();
+    SDL_UpdateTexture(screenTexture, NULL, screenSurface->pixels,
+                      screenSurface->pitch);
+    SDL_RenderCopy(renderer, screenTexture, NULL, NULL);
     if (drawMiniMapOn) {
       drawMiniMap();
       drawRays(allRayHits);
       drawPlayer();
       drawMiniMapSprites();
     }
-    drawWeapon();
+    
+    
     SDL_RenderPresent(renderer);
 }
 
@@ -520,20 +441,16 @@ void Game::drawWeapon() {
   float gunScale = DISPLAY_WIDTH / 320;
   SDL_Rect dstRect;
   SDL_Surface* gunSurface = gunImage.getSurface();
-  SDL_Texture* gunTexture = gunImage.getTexture();
   dstRect.w = gunSurface->w * gunScale;
   dstRect.h = gunSurface->h * gunScale;
   dstRect.x = (DISPLAY_WIDTH - dstRect.w) / 2;
   dstRect.y = DISPLAY_HEIGHT - dstRect.h;
-  SDL_RenderCopy(renderer, gunTexture, NULL, &dstRect);
+  SDL_BlitScaled(gunSurface, NULL, screenSurface, &dstRect);
 }
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    int tileX = player.x / TILE_SIZE;
-    int tileY = player.y / TILE_SIZE;
-    sprintf( szFps, "Pos (%d,%d)  Tile (%d,%d) - %d FPS", player.x, player.y,
-             tileX, tileY, fps );
+    sprintf( szFps, "SDL2 Raycast Demo - %d FPS", fps );
     SDL_SetWindowTitle(window, szFps);
 }
 
@@ -601,7 +518,7 @@ void Game::update(float timeElapsed) {
     else {
       player.dir = 0; // stop rotating
     }
-    updatePlayer();
+    updatePlayer(timeElapsed);
     updateProjectiles(timeElapsed);
 }
 
@@ -628,9 +545,11 @@ void Game::drawMiniMap() {
   }
 }
 
-void Game::updatePlayer() {
-  float moveStep = player.speed * player.moveSpeed;
-  player.rot += -player.dir * player.rotSpeed;
+void Game::updatePlayer(float elapsedTime) {
+  float timeBasedFactor = elapsedTime / UPDATE_INTERVAL;
+  
+  float moveStep = player.speed * player.moveSpeed * timeBasedFactor;
+  player.rot += -player.dir * player.rotSpeed  * timeBasedFactor;
   int newX = player.x +  cosine(player.rot) * moveStep;
   int newY = player.y + -sine(player.rot) * moveStep;
   int wallX = newX / TILE_SIZE;
@@ -638,7 +557,7 @@ void Game::updatePlayer() {
   if (isWallCell(wallX, wallY)) {
     return;
   }
-  if (g_floormap[wallY][wallX]==3) {
+  if (g_floormap[wallY][wallX]==7) {
     // water tile
     return;
   }
@@ -659,7 +578,9 @@ void Game::updateProjectiles(float timeElapsed) {
   sprites.erase( remove_if(sprites.begin(), sprites.end(), needsCleanUp),
                  sprites.end() );
 
-  float projectileSpeed = player.moveSpeed * 3;
+
+  float timeBasedFactor = timeElapsed / UPDATE_INTERVAL;
+  float projectileSpeed = player.moveSpeed * 3 * timeBasedFactor;
   float moveStep = 1 * projectileSpeed;
   while (!projectilesQueue.empty()) {
     Sprite newProjectile = projectilesQueue.front();
@@ -837,16 +758,21 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     rc.y = DISPLAY_HEIGHT/2;
     rc.w = DISPLAY_WIDTH;
     rc.h = DISPLAY_HEIGHT/2;
-    fillRect(&rc, 52, 158, 0);
+    SDL_FillRect(screenSurface, &rc,SDL_MapRGB(screenSurface->format,52,158,0));
     return;
   }
-  streamingTexture.lockTexture();
-  Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
+  
+  Uint32* streamingPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
 
     // Must be a wall, not a sprite
     if (!rayHit.wallType) {
+      continue;
+    }
+    
+    // Only draw below lowest wall
+    if (rayHit.level>0) {
       continue;
     }
 
@@ -875,15 +801,13 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
       int floorTileType = g_floormap[ tileY ][ tileX ];
-      Uint32* pix = (Uint32*) floorBitmap.getPixels();
-      switch (floorTileType) {
-        case 1: pix = (Uint32*) floorBitmap2.getPixels(); break;
-        case 2: pix = (Uint32*) floorBitmap3.getPixels(); break;
-        case 3: pix = (Uint32*) waterBitmap.getPixels(); break;
-        case 4: pix = (Uint32*) mossyCobbleBitmap.getPixels(); break;
+      Bitmap& bitmap = floorCeilingBitmaps[ floorTileType ];
+      Uint32* pix = (Uint32*)bitmap.getPixels();
+      if (!pix) {
+        continue;
       }
       int dstPixel = screenX + screenY * DISPLAY_WIDTH;
-      int srcPixel = y * floorBitmap.getWidth() + x;
+      int srcPixel = y * bitmap.getWidth() + x;
       streamingPixels[dstPixel] = pix[srcPixel];
 
       // Clamp the strip width so we don't write out of bounds of  the
@@ -905,44 +829,48 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       }
     }
   }
-  SDL_Rect rc;
-  rc.x = 0;
-  rc.y = DISPLAY_HEIGHT/2;
-  rc.w = DISPLAY_WIDTH;
-  rc.h = DISPLAY_HEIGHT/2;
-
-  // You MUST unlock the texture before using SDL_RenderCopy on it
-  streamingTexture.unlockTexture();
-  SDL_RenderCopy(renderer, streamingTexture.getTexture(), &rc,&rc);
 }
 
 void Game::drawCeiling(vector<RayHit>& rayHits)
 {
   if (!drawCeilingOn) {
+    SDL_Rect rc;
+    rc.x = 0;
+    rc.y = 0;
+    rc.w = DISPLAY_WIDTH;
+    rc.h = DISPLAY_HEIGHT/2;
+    SDL_FillRect(screenSurface, &rc,
+                 SDL_MapRGB(screenSurface->format,139, 185, 249));
     return;
   }
-  streamingTexture.lockTexture();
-  Uint32* streamingPixels = (Uint32*) streamingTexture.getPixels();
-
-  memset( streamingPixels, 0, DISPLAY_WIDTH*DISPLAY_HEIGHT*sizeof(Uint32));
+  Uint32* streamingPixels = (Uint32*) screenSurface->pixels;
 
   for (int i=0; i<(int)rayHits.size(); i++) {
     RayHit rayHit = rayHits[i];
-    // Must be a wall, not a sprite
+      // Only draw above furthest wall
     if (!rayHit.wallType) {
       continue;
     }
 
-    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
-                                                        rayHit.correctDistance, 
+    // Only draw above highest wall
+    if (rayHit.level!=highestCeilingLevel-1) {
+      int gridAbove = rayHit.level + 1;
+      if (gridAbove<raycaster3D.gridCount &&
+          raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, gridAbove)) {
+        continue;
+      }
+    }
+
+    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
+                                                        rayHit.correctDistance,
                                                         TILE_SIZE);
     int screenX = rayHit.strip * STRIP_WIDTH;
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 - 1;
     float eyeHeight = TILE_SIZE / 2;
     float centerPlane = DISPLAY_HEIGHT / 2;
-    for (screenY--;screenY>=0;screenY--)
+    for (;screenY>=0;screenY--)
     {
-      float ceilingHeight = TILE_SIZE * 2;
+      float ceilingHeight = TILE_SIZE * highestCeilingLevel;
       float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
       float diagonalDistance = (float)VIEW_DIST * (float)ratio;
 
@@ -955,13 +883,8 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       yEnd += player.y;
       xEnd += player.x;
 
-      bool outOfBounds = false;
-      if (xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE) {
-        outOfBounds = true;
-      }
-      if (yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE) {
-        outOfBounds = true;
-      }
+      bool outOfBounds = xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE ||
+                         yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE;
 
       int x = (int)(yEnd) % TILE_SIZE;
       int y = (int)(xEnd) % TILE_SIZE;
@@ -970,7 +893,7 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
 
       int tileType = outOfBounds ? 0 : g_ceilingmap[ tileY ][ tileX ];
       int dstPixel = screenX + screenY * DISPLAY_WIDTH;
-      int srcPixel = y * floorBitmap.getWidth() + x;
+      int srcPixel = y * TEXTURE_SIZE + x;
 
       // Clamp the strip width so we don't write out of bounds of  the
       // streamingPixels. Not sure if this is necessary.
@@ -979,9 +902,12 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
         stripWidth--;
       }
 
-      Uint32* pix = NULL;
       if (tileType) {
-        pix = (Uint32*) ceilingBitmap.getPixels();
+        Bitmap& bitmap = floorCeilingBitmaps[tileType];
+        Uint32* pix = (Uint32*)bitmap.getPixels();
+        if (!pix) {
+          continue;
+        }
         switch (stripWidth) {
           case 4:
             streamingPixels[dstPixel+3] = pix[srcPixel];
@@ -995,37 +921,46 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
         }
       }
       else {
+        const int PIXEL_LENGTH = SKYBOX_WIDTH * SKYBOX_HEIGHT;
+        int skyboxY = (screenY / (DISPLAY_HEIGHT/2.0f) * SKYBOX_HEIGHT);
+        Uint32* pix2 = (Uint32*) skyboxSurface->pixels;
+        int skyboxX = (float)screenX / DISPLAY_WIDTH * SKYBOX_WIDTH;
+        float rotation = player.rot;
+  //        while (rotation < 0) rotation += TWO_PI;
+  //        while (rotation >= TWO_PI) rotation -= TWO_PI;
+        int skyboxOffsetX = -((rotation/TWO_PI)*SKYBOX_WIDTH)*4;
+        skyboxX += skyboxOffsetX;
+        int offset = (skyboxX%SKYBOX_WIDTH +skyboxY*SKYBOX_WIDTH);
+        if (offset < 0) {
+          offset = 0;
+        }
+        if (offset >= PIXEL_LENGTH) {
+          offset = PIXEL_LENGTH - 1;
+        }
+        Uint32 pixel = pix2[ offset ];
         switch (stripWidth) {
           case 4:
-            streamingPixels[dstPixel+3] = ceilingColor;
+            streamingPixels[dstPixel+3] = pixel;
           case 3:
-            streamingPixels[dstPixel+2] = ceilingColor;
+            streamingPixels[dstPixel+2] = pixel;
           case 2:
-            streamingPixels[dstPixel+1] = ceilingColor;
+            streamingPixels[dstPixel+1] = pixel;
           default:
-            streamingPixels[dstPixel] = ceilingColor;
+            streamingPixels[dstPixel] = pixel;
             break;
         }
       }
     }
   }
-  SDL_Rect rc;
-  rc.x = 0;
-  rc.y = 0;
-  rc.w = DISPLAY_WIDTH;
-  rc.h = DISPLAY_HEIGHT/2;
-
-  // You MUST unlock the texture before usign SDL_RenderCopy on it
-  streamingTexture.unlockTexture();
-  SDL_RenderCopy(renderer, streamingTexture.getTexture(), &rc,&rc);
-
 }
+
 void Game::drawWorld(vector<RayHit>& rayHits)
 {
+  // Depth sorth by furthest first. Draw using painter's algorithm.
   std::sort(rayHits.begin(), rayHits.end());
-
-  drawFloor(rayHits);
+  
   drawCeiling(rayHits);
+  drawFloor(rayHits);
 
   //-----------------------
   // Draw Walls and Sprites
@@ -1033,29 +968,100 @@ void Game::drawWorld(vector<RayHit>& rayHits)
   if (!drawWallsOn) {
     return;
   }
+
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
-
+    
     // Wall
     if (rayHit.wallType) {
       int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
                                                         rayHit.correctDistance, 
                                                         TILE_SIZE);
-      float sx = (rayHit.horizontal?TEXTURE_SIZE:0) +
-                 (rayHit.tileX/TILE_SIZE*TEXTURE_SIZE);
-      if (sx >= TEXTURE_SIZE*2) {
-        sx = TEXTURE_SIZE*2 - 1;
-      }
+      float sx = rayHit.tileX/TILE_SIZE*TEXTURE_SIZE;
       float sy = TEXTURE_SIZE * (rayHit.wallType-1);
-      // Ground Level
-      if (rayHit.level == 0) {
-        drawWallStrip(sx, sy, rayHit.strip, wallScreenHeight);
+      bool aboveWall = rayHit.level &&
+                 raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, rayHit.level-1);
+      if (rayHit.horizontal) {
+        drawWallStrip(wallsImageDark, sx, sy, rayHit.strip, wallScreenHeight, 1,
+                      rayHit.level, aboveWall);
       }
-      // Level 1
       else {
-        drawWallStrip(sx, sy, rayHit.strip, wallScreenHeight, 1, 1);
+        drawWallStrip(wallsImage, sx, sy, rayHit.strip, wallScreenHeight, 1,
+                      rayHit.level, aboveWall);
       }
-    }
+      
+      // Ceilings below floating blocks
+      if (drawCeilingOn) {
+        int screenX = rayHit.strip * STRIP_WIDTH;
+        float eyeHeight = TILE_SIZE / 2;
+        float centerPlane = DISPLAY_HEIGHT / 2;
+  
+        // Draw bottom ceiling layer if wall is above an empty space
+        int levelBelow = rayHit.level - 1;
+        if (levelBelow>=0 &&
+            raycaster3D.cellAt(rayHit.wallX,rayHit.wallY, levelBelow)==0) {
+          int screenY = DISPLAY_HEIGHT/2;
+          int groundWallX = rayHit.wallX;
+          int groundWallY = rayHit.wallY;
+          bool wasInCeilingTile = false;
+          for (;screenY>=0;screenY--)
+          {
+            float ceilingHeight = TILE_SIZE * (rayHit.level);
+            float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
+            float diagonalDistance = (float)VIEW_DIST * (float)ratio;
+
+            // To correct for fisheye effect
+            float correctDistance = diagonalDistance *
+                                     (1/cos(player.rot-rayHit.rayAngle));
+
+            float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
+            float yEnd = (correctDistance * -sine(rayHit.rayAngle));
+            yEnd += player.y;
+            xEnd += player.x;
+
+            int x = (int)(yEnd) % TILE_SIZE;
+            int y = (int)(xEnd) % TILE_SIZE;
+            int wallX = xEnd / TILE_SIZE;
+            int wallY = yEnd / TILE_SIZE;
+
+            bool outOfBounds =xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE ||
+                              yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE;
+            bool sameTile = wallX==groundWallX&&wallY==groundWallY; 
+            if (outOfBounds || !sameTile) {
+              if (wasInCeilingTile) {
+                break;
+              }
+            }
+
+            int tileType = outOfBounds?0
+                                      :(sameTile);
+            if (tileType) {
+              wasInCeilingTile = true;
+              Bitmap& bitmap = floorCeilingBitmaps[ rayHit.wallType ];
+              Uint32* pix = (Uint32*)bitmap.getPixels();
+              if (!pix) {
+                continue;
+              }
+              Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+              int dstPixel = screenX + screenY * DISPLAY_WIDTH;
+              int srcPixel = y * bitmap.getWidth() + x;
+              switch (STRIP_WIDTH) {
+                case 4:
+                  screenPixels[dstPixel+3] = pix[srcPixel];
+                case 3:
+                  screenPixels[dstPixel+2] = pix[srcPixel];
+                case 2:
+                  screenPixels[dstPixel+1] = pix[srcPixel];
+                default:
+                  screenPixels[dstPixel] = pix[srcPixel];
+                  break;
+              } // switch
+            } // if (tileType)
+          } // for
+        } // if (raycaster)
+      } // if (drawCeilingOn)
+    } // if rayHit.wallType
+    
     // Sprite
     else if (rayHit.sprite && !rayHit.sprite->hidden) {
       SDL_Rect dstRect;
@@ -1066,15 +1072,16 @@ void Game::drawWorld(vector<RayHit>& rayHits)
         continue;
       }
       spriteSurfaceTexture = &spriteTextures[rayHit.sprite->textureID];
-      SDL_Texture* spriteTexture = spriteSurfaceTexture->getTexture();
       dstRect = findSpriteScreenPosition( *rayHit.sprite  );
-      SDL_RenderCopy(renderer, spriteTexture, NULL, &dstRect);
+      SDL_BlitScaled(spriteSurfaceTexture->getSurface(), NULL, screenSurface,
+                     &dstRect);
     }
   }
 }
 
-void Game::drawWallStrip(float textureX, float textureY, int stripIdx,
-                         int wallScreenHeight, int floors, int level)
+void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
+                         int stripIdx, int wallScreenHeight, int floors,
+                         int level, bool aboveWall)
 {
   float sx = textureX;
   float sy = textureY;
@@ -1097,14 +1104,17 @@ void Game::drawWallStrip(float textureX, float textureY, int stripIdx,
   dstrect.w = imgw;
   dstrect.h = imgh;
 
-  if (level) {
-    dstrect.h++;
+  dstrect.y -= 1;
+  // Hack: Make floating walls slightly longer to hide seams and tears
+  // caused by ceiling drawing
+  if (!aboveWall) {
+    dstrect.h += 2 * level;
   }
   dstrect.y -= level * wallScreenHeight;
-  SDL_RenderCopy(renderer, wallsImage.getTexture(), &srcrect, &dstrect);
+  SDL_BlitScaled(img.getSurface(), &srcrect, screenSurface, &dstrect);
   while (floors-- > 1) {
     dstrect.y -= wallScreenHeight;
-    SDL_RenderCopy(renderer, wallsImage.getTexture(), &srcrect, &dstrect);
+    SDL_BlitScaled(img.getSurface(), &srcrect, screenSurface, &dstrect);
   }
 }
 
@@ -1120,23 +1130,7 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
   float dist = sqrt(dx*dx + dy*dy);
 
   float spriteAngle = atan2(dy, dx) + player.rot;
-
-  /*
-  // Perpendicular distance
-  cos(angle) = ( adjacent / hypotenuse )
-  adjacent = cos(angle) * hypotenuse
-  sprite distance = cos( spriteAngle ) * sprite direct distance
-  */
   float spriteDistance = cos(spriteAngle)*dist;
-
-  /*
-  sprite distance         sprite width
-  ----------------- = -------------------
-  screen distance     sprite screen width
-   
-  sprite screen width = sprite width / (sprite distance / screen distance)
-                      = sprite width * (screen distance / sprite distance)
-  */
   float spriteScreenWidth = TILE_SIZE * VIEW_DIST / spriteDistance;
 
   // X-position on screen
@@ -1152,17 +1146,15 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
 
 void Game::raycastWorld(vector<RayHit>& rayHits)
 {
-  int stripIdx = 0;
   vector<Sprite*> spritesFound;
-
-  for (int i=0;i<RAYCOUNT;i++, stripIdx++) {
-    float screenX = (RAYCOUNT/2 - i) * STRIP_WIDTH;
+  for (int strip=0; strip<RAYCOUNT; strip++) {
+    float screenX = (RAYCOUNT/2 - strip) * STRIP_WIDTH;
     const float stripAngle = Raycaster::stripAngle(screenX, VIEW_DIST);
 
-    // Ground level Walls and Sprites
     vector<RayHit> rayHitsFound;
-    raycaster1.raycast(rayHitsFound, player.x, player.y, player.rot, stripAngle,
-                      stripIdx, false, &sprites);
+    raycaster3D.raycast(rayHitsFound, player.x, player.y, player.rot,
+                        stripAngle, strip, &sprites);
+                        
     for (size_t j=0; j<rayHitsFound.size(); ++j) {
       RayHit rayHit = rayHitsFound[ j ];
       if ( rayHit.distance ) {
@@ -1171,7 +1163,7 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
           rayHits.push_back(rayHit);
         }
         // Sprite found
-        else {
+        else if (rayHit.sprite) {
           bool addedAlready = std::find(spritesFound.begin(),
                                         spritesFound.end(),  rayHit.sprite) !=
                                         spritesFound.end();
@@ -1182,21 +1174,6 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
         }
       }
     }
-
-    // 2nd Level Walls
-    if (drawCeilingOn) {
-      vector<RayHit> rayHitsFound;
-      raycaster2.raycast(rayHitsFound, player.x, player.y, player.rot,
-                               stripAngle, stripIdx, true, NULL);
-      for (vector<RayHit>::iterator it=rayHitsFound.begin();
-           it!=rayHitsFound.end(); ++it) {
-        RayHit& rayhit = *it;
-        rayhit.level = 1;
-        if (rayhit.wallType && rayhit.distance) {
-          rayHits.push_back(*it);
-        } // if
-      } // for
-    } // drawCeilingOn
   }
 }
 

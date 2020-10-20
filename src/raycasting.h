@@ -49,12 +49,15 @@ struct RayHit {
   float rayAngle;  // angle used for calculation
   Sprite* sprite; // a sprite was hit
   int level; // ground level (0) or some other level.
+  bool furthest;
   RayHit(int worldX=0, int worldY=0, float angle=0)
   : x(worldX), y(worldY), rayAngle(angle) {
     wallType = strip = wallX = wallY = tileX = distance = 0;
     correctDistance = 0;
     horizontal = false;
     level = 0;
+    sprite = 0;
+    furthest = false;
   }
   // Objects further away are drawn first using this in std::sort
   bool operator<(const RayHit& b) const {
@@ -72,13 +75,15 @@ The offset is calculated using x + y * width.
 class Raycaster {
 public:
   Raycaster()
-  : gridWidth(0), gridHeight(0), tileSize(0) {
-    
+  : gridWidth(0), gridHeight(0), gridCount(0), tileSize(0) {
   }
+  
   Raycaster(int gridWidth, int gridHeight, int tileSize)
   : gridWidth(gridWidth), gridHeight(gridHeight), tileSize(tileSize) {
-    grid.resize( gridWidth * gridHeight );
+    createGrids(gridWidth, gridHeight, gridCount, tileSize);
   }
+  
+  void createGrids( int gridWidth, int gridHeight, int gridCount, int tileSize);
   
   // Distance between player to screen / projection plane
   static float screenDistance(float screenWidth, float fovRadians);
@@ -103,24 +108,24 @@ public:
   */
   void raycast(std::vector<RayHit>& rayHits,
                int playerX, int playerY,
-               float playerRot, float rayAngle, int stripIdx,
-               bool lookForMultipleWalls=false,
-               std::vector<Sprite>* spritesToLookFor=0,
-               std::vector<RayHit>* wallsToIgnore=0 );
-
-  static void raycast(std::vector<RayHit>& rayHits,
-                      std::vector<int>& grid,
+               float playerRot, float stripAngle, int stripIdx,
+               std::vector<Sprite>* spritesToLookFor=0);
+                      
+  static void raycast(std::vector<RayHit>& hits,
+                      std::vector< std::vector<int> >& grids,
                       int gridWidth, int gridHeight, int tileSize,
-                      int playerX, int playerY,
-                      float playerRot, float rayAngle, int stripIdx,
-                      bool lookForMultipleWalls=false,
-                      std::vector<Sprite>* spritesToLookFor=0,
-                      std::vector<RayHit>* wallsToIgnore=0 );
+                      int playerX, int playerY, float playerRot,
+                      float stripAngle, int stripIdx,
+                      std::vector<Sprite>* spritesToLookFor=0 );
 
-  std::vector<int> grid;
+  std::vector< std::vector<int> > grids;
   int gridWidth;
   int gridHeight;
+  int gridCount;
   int tileSize;
+  
+  int cellAt( int x, int y ) { return grids[0][x+y*gridWidth]; }
+  int cellAt( int x, int y, int z ) { return grids[z][x+y*gridWidth]; }
 };
 
 } // raycasting

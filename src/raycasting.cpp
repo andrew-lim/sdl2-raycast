@@ -1,8 +1,25 @@
 #include "raycasting.h"
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
+#include <cassert>
 using namespace std;
 using namespace al::raycasting;
+
+void Raycaster::createGrids( int gridWidth, int gridHeight, int gridCount,
+                             int tileSize)
+{
+  this->gridWidth = gridWidth;
+  this->gridHeight = gridHeight;
+  this->gridCount = gridCount;
+  this->tileSize = tileSize;
+  grids.clear();
+  for (int z=0; z<gridCount; ++z) {
+    std::vector<int> grid;
+    grid.resize( gridWidth * gridHeight );
+    grids.push_back(grid);
+  }
+}
 
 /*
  screenWidth
@@ -52,7 +69,8 @@ float Raycaster::stripAngle(float screenX, float screenDistance) {
 // Similar triangle principle
 float Raycaster::stripScreenHeight(float screenDistance, float correctDistance,
                                    float tileSize) {
-  return round(screenDistance / correctDistance*tileSize);                                     
+  // Use floor(+0.5) instead of round() because not all compilers have round()
+  return floor(screenDistance / correctDistance*tileSize + 0.5 );
 }
 
 
@@ -84,26 +102,26 @@ vector<Sprite*> Raycaster::findSpritesInCell(vector<Sprite>& sprites,
 void Raycaster::raycast(std::vector<RayHit>& rayHits,
                         int playerX, int playerY,
                         float playerRot, float stripAngle, int stripIdx,
-                        bool lookForMultipleWalls,
-                        std::vector<Sprite>* spritesToLookFor,
-                        std::vector<RayHit>* wallsToIgnore )
+                        std::vector<Sprite>* spritesToLookFor)
 {
-  Raycaster::raycast(rayHits, this->grid,
+  Raycaster::raycast(rayHits, this->grids,
                      this->gridWidth, this->gridHeight, this->tileSize,
                      playerX, playerY, playerRot,
                      stripAngle, stripIdx,
-                     lookForMultipleWalls,
-                     spritesToLookFor, wallsToIgnore);
+                     spritesToLookFor);
 }
 
-void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
+void Raycaster::raycast(vector<RayHit>& hits,
+                        vector< vector<int> >& grids,
                         int gridWidth, int gridHeight, int tileSize,
                         int playerX, int playerY, float playerRot,
                         float stripAngle, int stripIdx,
-                        bool lookForMultipleWalls,
-                        vector<Sprite>* spritesToLookFor,
-                        vector<RayHit>* wallsToIgnore )
+                        vector<Sprite>* spritesToLookFor)
 {
+  if (grids.empty()) {
+    return;
+  }
+  
   float rayAngle = stripAngle + playerRot;
   const float TWO_PI = M_PI*2;
   while (rayAngle < 0) rayAngle += TWO_PI;
@@ -112,70 +130,23 @@ void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
   bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
               (rayAngle>TWO_PI*0.75); // Quadrant 4
   bool up    = rayAngle<TWO_PI*0.5  && rayAngle>=0; // Quadrant 1 and 2
+  
+  std::vector<int>& groundGrid = grids[0];
+  
+  for (int level=0; level<(int)grids.size(); ++level) {
+    bool lookForMultipleWalls = level > 0;
+    vector<int>& grid = grids[level];
 
-  //----------------------------------------
-  // Check player's current tile for sprites
-  //----------------------------------------
-  vector<Sprite*> spritesHit;
-  int currentTileX = playerX / tileSize;
-  int currentTileY = playerY / tileSize;
-  if (spritesToLookFor) {
-    vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
-                                                      currentTileX,
-                                                      currentTileY,
-                                                      tileSize );
-    for (size_t i=0; i<spritesFound.size(); ++i) {
-      Sprite* sprite = spritesFound[ i ];
-      bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                    sprite) != spritesHit.end();
-      if (!addedAlready) {
-        const float distX = playerX - sprite->x;
-        const float distY = playerY - sprite->y;
-        const float blockDist = distX*distX + distY*distY;
-        sprite->distance = sqrt(blockDist);
-        spritesHit.push_back(sprite);
-      }
-    }
-  }
-
-  //--------------------------
-  // Vertical Lines Checking
-  //--------------------------
-  float verticalLineDistance = 0;
-  RayHit verticalWallHit;
-
-  // Find x coordinate of vertical lines on the right and left
-  float vx = 0;
-  if (right) {
-    vx = floor(playerX/tileSize) * tileSize + tileSize;
-  }
-  else {
-    vx = floor(playerX/tileSize) * tileSize - 1;
-  }
-
-  // Calculate y coordinate of those lines
-  // lineY = playerY + (playerX-lineX)*tan(ALPHA);
-  float vy = playerY + (playerX-vx)*tan(rayAngle);
-
-  // Calculate stepping vector for each line
-  float stepx = right ? tileSize : -tileSize;
-  float stepy = tileSize * tan(rayAngle);
-
-  // tan() returns positive values in Quadrant 1 and Quadrant 4 but window
-  // coordinates need negative coordinates for Y-axis so we reverse
-  if ( right ) {
-    stepy = -stepy;
-  }
-
-  while (vx>=0 && vx<gridWidth*tileSize && vy>=0 && vy<gridHeight*tileSize) {
-    int wallY = floor(vy / tileSize);
-    int wallX = floor(vx / tileSize);
-    int wallOffset = wallX + wallY * gridWidth;
-
-    // Look for sprites in current cell
-    if (spritesToLookFor) {
+    //----------------------------------------
+    // Check player's current tile for sprites
+    //----------------------------------------
+    vector<Sprite*> spritesHit;
+    int currentTileX = playerX / tileSize;
+    int currentTileY = playerY / tileSize;
+    if (spritesToLookFor && level==0) {
       vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
-                                                        wallX, wallY,
+                                                        currentTileX,
+                                                        currentTileY,
                                                         tileSize );
       for (size_t i=0; i<spritesFound.size(); ++i) {
         Sprite* sprite = spritesFound[ i ];
@@ -187,166 +158,269 @@ void Raycaster::raycast(vector<RayHit>& hits, vector<int>& grid,
           const float blockDist = distX*distX + distY*distY;
           sprite->distance = sqrt(blockDist);
           spritesHit.push_back(sprite);
-
-          RayHit spriteRayHit(vx, vy, rayAngle);
-          spriteRayHit.strip = stripIdx;
-          if (sprite->distance) {
-            spriteRayHit.distance = sprite->distance;
-            spriteRayHit.correctDistance = spriteRayHit.distance *
-                                            cos(stripAngle);
-          }
-          spriteRayHit.wallType = 0;
-          spriteRayHit.sprite = sprite;
-          spriteRayHit.distance = sprite->distance;
-          hits.push_back( spriteRayHit );
         }
       }
     }
-
-    // Skip walls requested to be ignored
-    if (wallsToIgnore && isWallInRayHits(*wallsToIgnore, wallX, wallY)) {
-    }
-
-    // Check if current cell is a wall
-    else if (grid[wallOffset] > 0) {
-      const float distX = playerX - vx;
-      const float distY = playerY - vy;
+    
+    // Check if the player is standing under a wall, and add that wall
+    // Figure this out by trial and error
+    // NO IDEA WHY THIS WORKS BUT IT DOES
+    int playerOffset = currentTileX + currentTileY*gridWidth;
+    if (level>0 && grid[playerOffset] > 0) {
+      const float distX = 1;
+      const float distY = 1;
       const float blockDist = distX*distX + distY*distY;
-      float texX = fmod(vy, tileSize);
+      float texX = fmod(playerY, tileSize);
       texX = right ? texX : tileSize - texX; // Facing left, flip image
 
-      RayHit rayHit(vx, vy, rayAngle);
+      RayHit rayHit(playerX, playerY, rayAngle);
       rayHit.strip = stripIdx;
-      rayHit.wallType = grid[wallOffset];
-      rayHit.wallX = wallX;
-      rayHit.wallY = wallY;
+      rayHit.wallType = grid[playerOffset];
+      rayHit.wallX = currentTileX;
+      rayHit.wallY = currentTileY;
+      rayHit.level = level;
       if (blockDist) {
         rayHit.distance = sqrt(blockDist);
         rayHit.correctDistance = rayHit.distance * cos(stripAngle);
       }
       rayHit.horizontal = false;
       rayHit.tileX = texX;
-
-      if (false == lookForMultipleWalls) {
-        verticalWallHit = rayHit;
-        verticalLineDistance = blockDist;
-        break;
-      }
       hits.push_back( rayHit );
     }
 
-    vx += stepx;
-    vy += stepy;
-  }
+    //--------------------------
+    // Vertical Lines Checking
+    //--------------------------
+    float verticalLineDistance = 0;
+    RayHit verticalWallHit;
 
-  //--------------------------
-  // Horizontal Lines Checking
-  //--------------------------
-  float horizontalLineDistance = 0;
+    // Find x coordinate of vertical lines on the right and left
+    float vx = 0;
+    if (right) {
+      vx = floor(playerX/tileSize) * tileSize + tileSize;
+    }
+    else {
+      vx = floor(playerX/tileSize) * tileSize - 1;
+    }
 
-  // Find y coordinate of horizontal lines on the right and left
-  float hy = 0;
-  if (up) {
-    hy = floor(playerY/tileSize) * tileSize - 1;
-  }
-  else {
-    hy = floor(playerY/tileSize) * tileSize + tileSize;
-  }
+    // Calculate y coordinate of those lines
+    // lineY = playerY + (playerX-lineX)*tan(ALPHA);
+    float vy = playerY + (playerX-vx)*tan(rayAngle);
 
-  // Calculation x coordinate of horizontal line
-  // lineX = playerX + (playerY-lineY)/tan(ALPHA);
-  float hx = playerX + (playerY-hy) / tan(rayAngle);
-  stepy = up ? -tileSize : tileSize;
-  stepx = tileSize / tan(rayAngle);
+    // Calculate stepping vector for each line
+    float stepx = right ? tileSize : -tileSize;
+    float stepy = tileSize * tan(rayAngle);
 
-  // tan() returns stepx as positive in quadrant 3 and negative in quadrant 4
-  // This is the opposite of window coordinates so we need to reverse when
-  // angle is facing down
-  if ( !up ) {
-    stepx = -stepx;
-  }
+    // tan() returns positive values in Quadrant 1 and Quadrant 4 but window
+    // coordinates need negative coordinates for Y-axis so we reverse
+    if ( right ) {
+      stepy = -stepy;
+    }
 
-  while (hx>=0 && hx<gridWidth*tileSize && hy>=0 && hy<gridHeight*tileSize) {
-    int wallY = floor(hy / tileSize);
-    int wallX = floor(hx / tileSize);
-    int wallOffset = wallX + wallY * gridWidth;
+    bool aboveEmptyBlock = level > 0 && groundGrid[playerOffset]==0;
+    int lastWallFoundIndex = -1;
+    while (vx>=0 && vx<gridWidth*tileSize && vy>=0 && vy<gridHeight*tileSize) {
+      int wallY = floor(vy / tileSize);
+      int wallX = floor(vx / tileSize);
+      int wallOffset = wallX + wallY * gridWidth;
 
-    // Look for sprites in current cell
-    if (spritesToLookFor) {
-      vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
-                                                        wallX, wallY,
-                                                        tileSize );
-      for (size_t i=0; i<spritesFound.size(); ++i) {
-        Sprite* sprite = spritesFound[ i ];
-        bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                      sprite) != spritesHit.end();
-        if (!addedAlready) {
-          const float distX = playerX - sprite->x;
-          const float distY = playerY - sprite->y;
-          const float blockDist = distX*distX + distY*distY;
-          sprite->distance = sqrt(blockDist);
-          spritesHit.push_back(sprite);
+      // Look for sprites in current cell
+      if (spritesToLookFor && level==0) {
+        vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
+                                                          wallX, wallY,
+                                                          tileSize );
+        for (size_t i=0; i<spritesFound.size(); ++i) {
+          Sprite* sprite = spritesFound[ i ];
+          bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
+                                        sprite) != spritesHit.end();
+          if (!addedAlready) {
+            const float distX = playerX - sprite->x;
+            const float distY = playerY - sprite->y;
+            const float blockDist = distX*distX + distY*distY;
+            sprite->distance = sqrt(blockDist);
+            spritesHit.push_back(sprite);
 
-          RayHit spriteRayHit(hx, hy, rayAngle);
-          spriteRayHit.strip = stripIdx;
-          if (sprite->distance) {
+            RayHit spriteRayHit(vx, vy, rayAngle);
+            spriteRayHit.strip = stripIdx;
+            if (sprite->distance) {
+              spriteRayHit.distance = sprite->distance;
+              spriteRayHit.correctDistance = spriteRayHit.distance *
+                                              cos(stripAngle);
+            }
+            spriteRayHit.wallType = 0;
+            spriteRayHit.sprite = sprite;
             spriteRayHit.distance = sprite->distance;
-            spriteRayHit.correctDistance = spriteRayHit.distance *
-                                            cos(stripAngle);
+            hits.push_back( spriteRayHit );
           }
-          spriteRayHit.wallType = 0;
-          spriteRayHit.sprite = sprite;
-          spriteRayHit.distance = sprite->distance;
-          hits.push_back( spriteRayHit );
         }
       }
+
+      // Check if current cell is a wall
+      if (grid[wallOffset] > 0) {
+        const float distX = playerX - vx;
+        const float distY = playerY - vy;
+        const float blockDist = distX*distX + distY*distY;
+        float texX = fmod(vy, tileSize);
+        texX = right ? texX : tileSize - texX; // Facing left, flip image
+
+        RayHit rayHit(vx, vy, rayAngle);
+        rayHit.strip = stripIdx;
+        rayHit.wallType = grid[wallOffset];
+        rayHit.wallX = wallX;
+        rayHit.wallY = wallY;
+        rayHit.level = level;
+        if (blockDist) {
+          rayHit.distance = sqrt(blockDist);
+          rayHit.correctDistance = rayHit.distance * cos(stripAngle);
+        }
+        rayHit.horizontal = false;
+        rayHit.tileX = texX;
+
+        // There is an empty space below this wall
+        aboveEmptyBlock = level>0&&(aboveEmptyBlock||groundGrid[wallOffset]==0);
+        if (aboveEmptyBlock) {
+          aboveEmptyBlock = groundGrid[wallOffset]==0;
+        }
+        else if (false == lookForMultipleWalls) {
+          verticalWallHit = rayHit;
+          verticalLineDistance = blockDist;
+          break;
+        }
+        hits.push_back( rayHit );
+        lastWallFoundIndex = hits.size() - 1;
+      }
+
+      vx += stepx;
+      vy += stepy;
+    }
+    if (lastWallFoundIndex != -1) {
+      hits[lastWallFoundIndex].furthest = true;
+    }
+    
+
+    //--------------------------
+    // Horizontal Lines Checking
+    //--------------------------
+    float horizontalLineDistance = 0;
+
+    // Find y coordinate of horizontal lines on the right and left
+    float hy = 0;
+    if (up) {
+      hy = floor(playerY/tileSize) * tileSize - 1;
+    }
+    else {
+      hy = floor(playerY/tileSize) * tileSize + tileSize;
     }
 
-    if (wallsToIgnore && isWallInRayHits(*wallsToIgnore, wallX, wallY)) {
+    // Calculation x coordinate of horizontal line
+    // lineX = playerX + (playerY-lineY)/tan(ALPHA);
+    float hx = playerX + (playerY-hy) / tan(rayAngle);
+    stepy = up ? -tileSize : tileSize;
+    stepx = tileSize / tan(rayAngle);
+
+    // tan() returns stepx as positive in quadrant 3 and negative in quadrant 4
+    // This is the opposite of window coordinates so we need to reverse when
+    // angle is facing down
+    if ( !up ) {
+      stepx = -stepx;
     }
 
-    // Check if current cell is a wall
-    else if (grid[wallOffset] > 0) {
-      const float distX = playerX - hx;
-      const float distY = playerY - hy;
-      const float blockDist = distX*distX + distY*distY;
+    aboveEmptyBlock = level > 0 && groundGrid[playerOffset]==0;
+    lastWallFoundIndex = -1;
+    while (hx>=0 && hx<gridWidth*tileSize && hy>=0 && hy<gridHeight*tileSize) {
+      int wallY = floor(hy / tileSize);
+      int wallX = floor(hx / tileSize);
+      int wallOffset = wallX + wallY * gridWidth;
 
-      // If horizontal distance is less than vertical line distance, stop
-      if (false==lookForMultipleWalls) {
-        if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
+      // Look for sprites in current cell
+      if (spritesToLookFor && level==0) {
+        vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
+                                                          wallX, wallY,
+                                                          tileSize );
+        for (size_t i=0; i<spritesFound.size(); ++i) {
+          Sprite* sprite = spritesFound[ i ];
+          bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
+                                        sprite) != spritesHit.end();
+          if (!addedAlready) {
+            const float distX = playerX - sprite->x;
+            const float distY = playerY - sprite->y;
+            const float blockDist = distX*distX + distY*distY;
+            sprite->distance = sqrt(blockDist);
+            spritesHit.push_back(sprite);
+
+            RayHit spriteRayHit(hx, hy, rayAngle);
+            spriteRayHit.strip = stripIdx;
+            if (sprite->distance) {
+              spriteRayHit.distance = sprite->distance;
+              spriteRayHit.correctDistance = spriteRayHit.distance *
+                                              cos(stripAngle);
+            }
+            spriteRayHit.wallType = 0;
+            spriteRayHit.sprite = sprite;
+            spriteRayHit.distance = sprite->distance;
+            hits.push_back( spriteRayHit );
+          }
+        }
+      }
+
+      // Check if current cell is a wall
+      if (grid[wallOffset] > 0) {
+        const float distX = playerX - hx;
+        const float distY = playerY - hy;
+        const float blockDist = distX*distX + distY*distY;
+        // There is an empty space below this wall
+        aboveEmptyBlock = level>0&&(aboveEmptyBlock||groundGrid[wallOffset]==0);
+        if (aboveEmptyBlock) {
+          aboveEmptyBlock = groundGrid[wallOffset]==0;
+        }
+        // If horizontal distance is less than vertical line distance, stop
+        else if (false==lookForMultipleWalls) {
+          if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
+            break;
+          }
+        }
+
+        float texX =  fmod(hx, tileSize);
+        texX = up ? texX : tileSize - texX; // Facing down, flip image
+
+        RayHit rayHit(hx, hy, rayAngle);
+        rayHit.strip = stripIdx;
+        rayHit.wallType = grid[wallOffset];
+        rayHit.wallX = wallX;
+        rayHit.wallY = wallY;
+        rayHit.level = level;
+        if (blockDist) {
+          rayHit.distance = sqrt(blockDist);
+          rayHit.correctDistance = rayHit.distance * cos(stripAngle);
+        }
+        rayHit.horizontal = true;
+        rayHit.tileX = texX;
+        horizontalLineDistance = blockDist;
+        hits.push_back( rayHit );
+        lastWallFoundIndex = hits.size() - 1;
+
+        // There is an empty space below this wall
+        aboveEmptyBlock = level>0&&(aboveEmptyBlock||groundGrid[wallOffset]==0);
+        if (aboveEmptyBlock) {
+          aboveEmptyBlock = groundGrid[wallOffset]==0;
+        }
+        else if (false == lookForMultipleWalls) {
           break;
         }
       }
-
-      float texX =  fmod(hx, tileSize);
-      texX = up ? texX : tileSize - texX; // Facing down, flip image
-
-      RayHit rayHit(hx, hy, rayAngle);
-      rayHit.strip = stripIdx;
-      rayHit.wallType = grid[wallOffset];
-      rayHit.wallX = wallX;
-      rayHit.wallY = wallY;
-      if (blockDist) {
-        rayHit.distance = sqrt(blockDist);
-        rayHit.correctDistance = rayHit.distance * cos(stripAngle);
-      }
-      rayHit.horizontal = true;
-      rayHit.tileX = texX;
-      horizontalLineDistance = blockDist;
-      hits.push_back( rayHit );
-
-      if (false == lookForMultipleWalls) {
-        break;
-      }
+      hx += stepx;
+      hy += stepy;
     }
-    hx += stepx;
-    hy += stepy;
-  }
+    if (lastWallFoundIndex != -1) {
+      hits[lastWallFoundIndex].furthest = true;
+    }
 
-  // Choose the shortest distance if looking for nearest wall
-  if (false==lookForMultipleWalls) {
-    if (!horizontalLineDistance && verticalLineDistance) {
-      hits.push_back(verticalWallHit);
+    // Choose the shortest distance if looking for nearest wall
+    if (false==lookForMultipleWalls) {
+      if (!horizontalLineDistance && verticalLineDistance) {
+        verticalWallHit.furthest = true;
+        hits.push_back(verticalWallHit);
+      }
     }
   }
 }

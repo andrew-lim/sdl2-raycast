@@ -13,7 +13,7 @@ namespace sdl2utils {
 
 /**
  * Copies pixels from surface.
- * You should free() the returned pixels when you're done with thme.
+ * You should free() the returned pixels when you're done with them.
  */
 Uint8* copySurfacePixels( SDL_Surface* surface,  // surface to copy from
                           Uint32 pixelFormat,    // pixel format

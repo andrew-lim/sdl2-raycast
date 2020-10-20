@@ -5,8 +5,8 @@ CPP      = g++.exe
 CC       = gcc.exe
 WINDRES  = windres.exe
 RES      = sdl2-raycast_private.res
-OBJ      = ../src/main.o ../src/sdl2utils.o ../src/raycasting.o $(RES)
-LINKOBJ  = ../src/main.o ../src/sdl2utils.o ../src/raycasting.o $(RES)
+OBJ      = ../src/main.o ../src/sdl2utils.o ../src/raycasting.o ../src/defaults.o $(RES)
+LINKOBJ  = ../src/main.o ../src/sdl2utils.o ../src/raycasting.o ../src/defaults.o $(RES)
 LIBS     = -L"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/lib32" -static-libgcc -L"../SDL2-2.0.12/i686-w64-mingw32/lib" -L"../SDL2_mixer-2.0.4/i686-w64-mingw32/lib" -lmingw32  -lSDL2main  -lSDL2 -lSDL2_mixer -m32
 INCS     = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include" -I"../SDL2-2.0.12/i686-w64-mingw32/include" -I"../SDL2-2.0.12/i686-w64-mingw32/include/SDL2" -I"../SDL2_mixer-2.0.4/i686-w64-mingw32/include/SDL2"
 CXXINCS  = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.9.2/include/c++" -I"../SDL2-2.0.12/i686-w64-mingw32/include" -I"../SDL2-2.0.12/i686-w64-mingw32/include/SDL2" -I"../SDL2_mixer-2.0.4/i686-w64-mingw32/include/SDL2"
@@ -33,6 +33,9 @@ $(BIN): $(OBJ)
 
 ../src/raycasting.o: ../src/raycasting.cpp
 	$(CPP) -c ../src/raycasting.cpp -o ../src/raycasting.o $(CXXFLAGS)
+
+../src/defaults.o: ../src/defaults.cpp
+	$(CPP) -c ../src/defaults.cpp -o ../src/defaults.o $(CXXFLAGS)
 
 sdl2-raycast_private.res: sdl2-raycast_private.rc ../src/resource.rc
 	$(WINDRES) -i sdl2-raycast_private.rc -F pe-i386 --input-format=rc -o sdl2-raycast_private.res -O coff 
