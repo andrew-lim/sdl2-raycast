@@ -996,7 +996,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       // For example, for a block type 1, we use texture 1a for its horizontal
       // faces, and 1b for its vertical faces.
       //
-      // Now imagine we have 2 blocks of type 1 beside on the X-axis.
+      // Now imagine we have 2 blocks of type 1 beside each other on the X-axis.
       // Their horizontal faces should have the same texture.
       // But sometimes at the corner where they touch the raycasting algorithm
       // finds a vertical line (also of the same block type).
