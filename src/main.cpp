@@ -1104,10 +1104,10 @@ void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
   dstrect.w = imgw;
   dstrect.h = imgh;
 
+  dstrect.y--;
   // Hack: Make floating walls slightly longer to hide seams and tears
   // caused by ceiling drawing
   if (level && !aboveWall) {
-    dstrect.y--;
     dstrect.h += 2 * level;
   }
 
