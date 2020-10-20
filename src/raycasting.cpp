@@ -269,6 +269,8 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.wallX = wallX;
         rayHit.wallY = wallY;
         rayHit.level = level;
+        rayHit.up = up;
+        rayHit.right = right;
         if (blockDist) {
           rayHit.distance = sqrt(blockDist);
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
@@ -373,7 +375,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         if (aboveEmptyBlock) {
           aboveEmptyBlock = groundGrid[wallOffset]==0;
         }
-        // If horizontal distance is less than vertical line distance, stop
+        // If vertical distance is less than horizontal line distance, stop
         else if (false==lookForMultipleWalls) {
           if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
             break;
@@ -389,6 +391,8 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.wallX = wallX;
         rayHit.wallY = wallY;
         rayHit.level = level;
+        rayHit.up = up;
+        rayHit.right = right;
         if (blockDist) {
           rayHit.distance = sqrt(blockDist);
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);

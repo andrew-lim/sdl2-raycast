@@ -50,6 +50,8 @@ struct RayHit {
   Sprite* sprite; // a sprite was hit
   int level; // ground level (0) or some other level.
   bool furthest;
+  bool right;
+  bool up;
   RayHit(int worldX=0, int worldY=0, float angle=0)
   : x(worldX), y(worldY), rayAngle(angle) {
     wallType = strip = wallX = wallY = tileX = distance = 0;

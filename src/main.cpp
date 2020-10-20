@@ -139,7 +139,7 @@ private:
     Mix_Chunk* projectileExplodeSound;
     std::map<int,SurfaceTexture> spriteTextures;
     std::vector<Bitmap> floorCeilingBitmaps;
-    
+
     SDL_Texture* screenTexture;
     SDL_Surface* screenSurface;
     int highestCeilingLevel;
@@ -193,12 +193,12 @@ Game::~Game() {
 void Game::reset()
 {
   highestCeilingLevel = 3;
-  
+
   raycaster3D.createGrids(MAP_WIDTH, MAP_HEIGHT,highestCeilingLevel, TILE_SIZE);
   array2DToVector(g_map, raycaster3D.grids[0]);
   array2DToVector(g_map2, raycaster3D.grids[1]);
   array2DToVector(g_map3, raycaster3D.grids[2]);
-  
+
   grids = raycaster3D.grids;
 
   array2DToVector(g_ceilingmap, ceilingGrid);
@@ -259,7 +259,7 @@ void Game::start() {
   screenTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                     SDL_TEXTUREACCESS_TARGET, DISPLAY_WIDTH,
                                     DISPLAY_HEIGHT);
-  
+
   screenSurface = SDL_CreateRGBSurface(0, DISPLAY_WIDTH, DISPLAY_HEIGHT, 32,
                                        0x00FF0000,
                                        0x0000FF00,
@@ -357,10 +357,10 @@ void Game::start() {
       return;
     }
   }
-  
+
   ceilingBitmap.load("..\\res\\texture1.bmp", renderer, pf);
   skyboxSurface = SDL_LoadBMP("..\\res\\skybox2.bmp");
- 
+
   if (!skyboxSurface) {
     printf("Error loading skybox2.bmp\n");
     return;
@@ -390,7 +390,7 @@ void Game::draw() {
 //    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 139, 185, 249, SDL_ALPHA_OPAQUE );
     SDL_RenderClear(renderer);
-    
+
 //    SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_TRANSPARENT);
 //    SDL_RenderFillRect(renderer, NULL);
 
@@ -408,8 +408,8 @@ void Game::draw() {
       drawPlayer();
       drawMiniMapSprites();
     }
-    
-    
+
+
     SDL_RenderPresent(renderer);
 }
 
@@ -547,7 +547,7 @@ void Game::drawMiniMap() {
 
 void Game::updatePlayer(float elapsedTime) {
   float timeBasedFactor = elapsedTime / UPDATE_INTERVAL;
-  
+
   float moveStep = player.speed * player.moveSpeed * timeBasedFactor;
   player.rot += -player.dir * player.rotSpeed  * timeBasedFactor;
   int newX = player.x +  cosine(player.rot) * moveStep;
@@ -761,7 +761,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     SDL_FillRect(screenSurface, &rc,SDL_MapRGB(screenSurface->format,52,158,0));
     return;
   }
-  
+
   Uint32* streamingPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
@@ -770,14 +770,14 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     if (!rayHit.wallType) {
       continue;
     }
-    
+
     // Only draw below lowest wall
     if (rayHit.level>0) {
       continue;
     }
 
-    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
-                                                        rayHit.correctDistance, 
+    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
+                                                        rayHit.correctDistance,
                                                         TILE_SIZE);
     int screenX = rayHit.strip * STRIP_WIDTH;
     int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 + wallScreenHeight-1;
@@ -958,7 +958,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 {
   // Depth sorth by furthest first. Draw using painter's algorithm.
   std::sort(rayHits.begin(), rayHits.end());
-  
+
   drawCeiling(rayHits);
   drawFloor(rayHits);
 
@@ -971,31 +971,98 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
-    
+
     // Wall
     if (rayHit.wallType) {
-      int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST, 
-                                                        rayHit.correctDistance, 
+      int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
+                                                        rayHit.correctDistance,
                                                         TILE_SIZE);
       float sx = rayHit.tileX/TILE_SIZE*TEXTURE_SIZE;
       float sy = TEXTURE_SIZE * (rayHit.wallType-1);
       bool aboveWall = rayHit.level &&
                  raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, rayHit.level-1);
-      if (rayHit.horizontal) {
-        drawWallStrip(wallsImageDark, sx, sy, rayHit.strip, wallScreenHeight, 1,
-                      rayHit.level, aboveWall);
+      int sxi = (int) sx;
+
+      SurfaceTexture* img = rayHit.horizontal ? &wallsImageDark : &wallsImage;
+
+      //------------------------------------------------------------------------
+      // Corner Checking Start
+      //
+      // I use different textures for horizontal and vertical lines.
+      // However my raycasting algorithm has problems with some corners
+      // where 2 identical blocks touching each other with the same texture
+      // have a "tear" caused by a perpendicular line.
+      //
+      // For example, for a block type 1, we use texture 1a for its horizontal
+      // faces, and 1b for its vertical faces.
+      //
+      // Now imagine we have 2 blocks of type 1 beside on the X-axis.
+      // Their horizontal faces should have the same texture.
+      // But sometimes at the corner where they touch the raycasting algorithm
+      // finds a vertical line (also of the same block type).
+      // So texture 1b is drawn and can cause a visible vertical line tear if
+      // the 1a and 1b texture edges are very different.
+      //
+      // This block of code checks each possible corner where 2 blocks meet
+      // and makes sure the perpendicular line drawn is the right texture.
+      //
+      // If you use the same texture for all sides of a block, you don't need
+      // this check at all and can set cornerCheck to false.
+      //------------------------------------------------------------------------
+      bool cornerCheck = true;
+      bool isLeftEdge = sxi==0;
+      bool isRightEdge = sxi == TEXTURE_SIZE-1;
+      if (cornerCheck && (isLeftEdge||isRightEdge))
+      {
+        const int wallX = rayHit.wallX;
+        const int wallY = rayHit.wallY;
+        const int level = rayHit.level;
+        int rightWall = 0;
+        int leftWall = 0;
+        int bottomWall = 0;
+        int topWall = 0;
+        if(rayHit.wallX+1<MAP_WIDTH) {
+          rightWall = raycaster3D.cellAt(wallX+1, wallY, level);
+        }
+        if(rayHit.wallX-1>=0) {
+          leftWall = raycaster3D.cellAt(wallX-1, wallY, level);
+        }
+        if (rayHit.wallY+1<MAP_HEIGHT) {
+          bottomWall = raycaster3D.cellAt(wallX, wallY+1, level);
+        }
+        if (rayHit.wallY-1>=0) {
+          topWall = raycaster3D.cellAt(wallX, wallY-1, level);
+        }
+        if (isRightEdge) {
+          if (rayHit.horizontal && rayHit.up && !rayHit.right && bottomWall) {
+            img = &wallsImage;
+          }
+          else if (rayHit.up && rayHit.right && leftWall) {
+            img = &wallsImageDark;
+          }
+        }
+        else if (isLeftEdge) {
+          if (rayHit.horizontal && !rayHit.up && !rayHit.right && topWall) {
+            img = &wallsImage;
+          }
+          else if (rayHit.up && !rayHit.right && rightWall) {
+            img = &wallsImageDark;
+          }
+        }
       }
-      else {
-        drawWallStrip(wallsImage, sx, sy, rayHit.strip, wallScreenHeight, 1,
-                      rayHit.level, aboveWall);
-      }
-      
+      //---------------------
+      // Corner Checking End
+      //---------------------
+
+      drawWallStrip(*img, sx, sy, rayHit.strip, wallScreenHeight, 1,
+                    rayHit.level, aboveWall);
+
       // Ceilings below floating blocks
       if (drawCeilingOn) {
         int screenX = rayHit.strip * STRIP_WIDTH;
         float eyeHeight = TILE_SIZE / 2;
         float centerPlane = DISPLAY_HEIGHT / 2;
-  
+
         // Draw bottom ceiling layer if wall is above an empty space
         int levelBelow = rayHit.level - 1;
         if (levelBelow>=0 &&
@@ -1026,7 +1093,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
             bool outOfBounds =xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE ||
                               yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE;
-            bool sameTile = wallX==groundWallX&&wallY==groundWallY; 
+            bool sameTile = wallX==groundWallX&&wallY==groundWallY;
             if (outOfBounds || !sameTile) {
               if (wasInCeilingTile) {
                 break;
@@ -1061,7 +1128,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
         } // if (raycaster)
       } // if (drawCeilingOn)
     } // if rayHit.wallType
-    
+
     // Sprite
     else if (rayHit.sprite && !rayHit.sprite->hidden) {
       SDL_Rect dstRect;
@@ -1155,7 +1222,7 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
     vector<RayHit> rayHitsFound;
     raycaster3D.raycast(rayHitsFound, player.x, player.y, player.rot,
                         stripAngle, strip, &sprites);
-                        
+
     for (size_t j=0; j<rayHitsFound.size(); ++j) {
       RayHit rayHit = rayHitsFound[ j ];
       if ( rayHit.distance ) {
@@ -1182,7 +1249,7 @@ bool Game::isWallCell(int x, int y) {
   // first make sure that we cannot move outside the boundaries of the level
   if (y < 0 || y >= MAP_HEIGHT || x < 0 || x >= MAP_WIDTH)
     return true;
-    
+
   // return true if the map block is not 0, ie. if there is a blocking wall.
   return (g_map[y][x]!= 0);
 }
