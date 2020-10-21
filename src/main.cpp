@@ -410,8 +410,6 @@ void Game::draw() {
       drawPlayer();
       drawMiniMapSprites();
     }
-
-
     SDL_RenderPresent(renderer);
 }
 
@@ -746,7 +744,7 @@ void Game::drawRay(float rayX, float rayY) {
 void Game::drawRays(vector<RayHit>& rayHits) {
    for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
-    if (rayHit.wallType && rayHit.level==0) {
+    if (rayHit.wallType && rayHit.level==0){
       drawRay(rayHit.x, rayHit.y);
     }
   }
@@ -1178,7 +1176,7 @@ void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
   // Hack: Make floating walls slightly longer to hide seams and tears
   // caused by ceiling drawing
   if (level && !aboveWall) {
-    dstrect.h += 2 * level;
+    dstrect.h += 1 + level;
   }
 
   dstrect.y -= level * wallScreenHeight;

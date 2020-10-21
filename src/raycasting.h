@@ -62,9 +62,7 @@ struct RayHit {
     furthest = false;
   }
   // Objects further away are drawn first using this in std::sort
-  bool operator<(const RayHit& b) const {
-      return distance > b.distance;
-  }
+  bool operator<(const RayHit& b) const;
 };
 
 /*
@@ -102,6 +100,11 @@ public:
   static std::vector<Sprite*> findSpritesInCell(std::vector<Sprite>& sprites,
                                                 int cellX, int cellY,
                                                 int tileSize);
+
+  // Checks if there are any empty blocks below specified block.
+  // This checks multiple levels of blocks, not just the one directly below.
+  static bool anySpaceBelow( std::vector< std::vector<int> >& grids,
+                             int gridWidth, int x, int y, int z );
 
   /*
   The raycast methods look for collisions with walls and sprites.

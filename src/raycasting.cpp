@@ -6,6 +6,13 @@
 using namespace std;
 using namespace al::raycasting;
 
+bool RayHit::operator<(const RayHit& b) const {
+  if (distance==b.distance) {
+    return level > b.level; // draw higher levels first
+  }
+  return distance > b.distance; // draw further walls first
+}
+
 void Raycaster::createGrids( int gridWidth, int gridHeight, int gridCount,
                              int tileSize)
 {
@@ -99,6 +106,22 @@ vector<Sprite*> Raycaster::findSpritesInCell(vector<Sprite>& sprites,
   return spritesFound;
 }
 
+// Checks if there are any empty blocks below specified block
+bool Raycaster::anySpaceBelow( std::vector< std::vector<int> >& grids,
+                               int gridWidth, int x, int y, int z )
+{
+  if (z==0) {
+    return false;
+  }
+  for (int level=z-1; level>=0; level--) {
+    std::vector<int>& grid = grids[ level ];
+    if (0 == grid[x + y*gridWidth]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void Raycaster::raycast(std::vector<RayHit>& rayHits,
                         int playerX, int playerY,
                         float playerRot, float stripAngle, int stripIdx,
@@ -161,9 +184,13 @@ void Raycaster::raycast(vector<RayHit>& hits,
       }
     }
     
+    //--------------------------------------------------------------------------
     // Check if the player is standing under a wall, and add that wall
     // Figure this out by trial and error
     // NO IDEA WHY THIS WORKS BUT IT DOES
+    // Without this you might see some ceilings you're directly under
+    // disppear early.
+    //--------------------------------------------------------------------------
     int playerOffset = currentTileX + currentTileY*gridWidth;
     if (level>0 && grid[playerOffset] > 0) {
       const float distX = 1;
@@ -216,12 +243,13 @@ void Raycaster::raycast(vector<RayHit>& hits,
       stepy = -stepy;
     }
 
-    bool aboveEmptyBlock = level > 0 && groundGrid[playerOffset]==0;
+    bool prevSpaceBelow = false;
     int lastWallFoundIndex = -1;
     while (vx>=0 && vx<gridWidth*tileSize && vy>=0 && vy<gridHeight*tileSize) {
       int wallY = floor(vy / tileSize);
       int wallX = floor(vx / tileSize);
       int wallOffset = wallX + wallY * gridWidth;
+
 
       // Look for sprites in current cell
       if (spritesToLookFor && level==0) {
@@ -277,10 +305,10 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.horizontal = false;
         rayHit.tileX = texX;
 
-        // There is an empty space below this wall
-        aboveEmptyBlock = level>0&&(aboveEmptyBlock||groundGrid[wallOffset]==0);
-        if (aboveEmptyBlock) {
-          aboveEmptyBlock = groundGrid[wallOffset]==0;
+        bool spaceBelow = anySpaceBelow(grids,gridWidth,wallX,wallY,level);
+        // There is an empty space below this wall, or the wall before
+        if (prevSpaceBelow||spaceBelow) {
+          prevSpaceBelow = spaceBelow; // for next wall check
         }
         else {
           verticalWallHit = rayHit;
@@ -297,7 +325,6 @@ void Raycaster::raycast(vector<RayHit>& hits,
     if (lastWallFoundIndex != -1) {
       hits[lastWallFoundIndex].furthest = true;
     }
-    
 
     //--------------------------
     // Horizontal Lines Checking
@@ -326,7 +353,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       stepx = -stepx;
     }
 
-    aboveEmptyBlock = level > 0 && groundGrid[playerOffset]==0;
+    prevSpaceBelow = false;
     lastWallFoundIndex = -1;
     while (hx>=0 && hx<gridWidth*tileSize && hy>=0 && hy<gridHeight*tileSize) {
       int wallY = floor(hy / tileSize);
@@ -369,14 +396,11 @@ void Raycaster::raycast(vector<RayHit>& hits,
         const float distX = playerX - hx;
         const float distY = playerY - hy;
         const float blockDist = distX*distX + distY*distY;
-        // There is an empty space below this wall
-        aboveEmptyBlock = level>0&&(aboveEmptyBlock||groundGrid[wallOffset]==0);
-        if (aboveEmptyBlock) {
-          aboveEmptyBlock = groundGrid[wallOffset]==0;
-        }
+
         // If vertical distance is less than horizontal line distance, stop
-        else {
-          if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
+        if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
+          // Unless there was some space below previous wall
+          if (!prevSpaceBelow) {
             break;
           }
         }
@@ -402,10 +426,16 @@ void Raycaster::raycast(vector<RayHit>& hits,
         hits.push_back( rayHit );
         lastWallFoundIndex = hits.size() - 1;
 
-        // There is an empty space below this wall
-        aboveEmptyBlock = level>0&&(aboveEmptyBlock||groundGrid[wallOffset]==0);
-        if (aboveEmptyBlock) {
-          aboveEmptyBlock = groundGrid[wallOffset]==0;
+        bool spaceBelow = anySpaceBelow(grids,gridWidth,wallX,wallY,level);
+        // There is an empty space below this wall, or the wall before
+        if (prevSpaceBelow||spaceBelow) {
+          // Add the previous vertical line if any
+          if (verticalLineDistance) {
+            verticalWallHit.furthest = true;
+            hits.push_back(verticalWallHit);
+            verticalLineDistance = 0; // Make sure not to add it again
+          }
+          prevSpaceBelow = spaceBelow; // for next wall check
         }
         else {
           break;
@@ -418,7 +448,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       hits[lastWallFoundIndex].furthest = true;
     }
 
-    // Choose the shortest distance if looking for nearest wall
+    // If no horizontal line was found, but a vertical line was.
     if (!horizontalLineDistance && verticalLineDistance) {
       verticalWallHit.furthest = true;
       hits.push_back(verticalWallHit);
