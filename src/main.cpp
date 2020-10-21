@@ -1210,6 +1210,22 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
   rc.y = (DISPLAY_HEIGHT - spriteScreenWidth)/2.0f;
   rc.w = spriteScreenWidth;
   rc.h = spriteScreenWidth;
+
+  // If sprite is inside a wall, keep moving it up
+  int spriteWallX = sprite.x / TILE_SIZE;
+  int spriteWallY = sprite.y / TILE_SIZE;
+  int level = 0;
+  bool inWall = raycaster3D.cellAt(spriteWallX, spriteWallY, level);
+  while (inWall) {
+    level++;
+    inWall = level<raycaster3D.gridCount &&
+             raycaster3D.cellAt(spriteWallX, spriteWallY, level);
+    if (!inWall) {
+      break;
+    }
+  }
+  rc.y -= level * spriteScreenWidth;
+
   return rc;
 }
 
