@@ -8,11 +8,12 @@ https://github.com/andrew-lim/
 
 namespace al {
 namespace raycasting {
-  
+
 class Sprite {
 public:
     int x, y ;
     int w, h ;
+    int level;
     int dir;         // -1 for left or 1 for right.
     float rot;       // rotation (counterclockwise is positive)
     int speed;       // forward (speed = 1) or backwards (speed = -1).
@@ -24,7 +25,7 @@ public:
     int frameRate;
     int frame;
     bool hidden;
-    Sprite() :x(0), y(0), w(0), h(0), dir(0), rot(0), speed(0) {
+    Sprite() :x(0), y(0), w(0), h(0), level(0), dir(0), rot(0), speed(0) {
       moveSpeed = 0;
       rotSpeed = 0;
       distance = 0;
@@ -74,23 +75,29 @@ The offset is calculated using x + y * width.
 */
 class Raycaster {
 public:
+  std::vector< std::vector<int> > grids;
+  int gridWidth;
+  int gridHeight;
+  int gridCount;
+  int tileSize;
+public:
   Raycaster()
   : gridWidth(0), gridHeight(0), gridCount(0), tileSize(0) {
   }
-  
+
   Raycaster(int gridWidth, int gridHeight, int tileSize)
   : gridWidth(gridWidth), gridHeight(gridHeight), tileSize(tileSize) {
     createGrids(gridWidth, gridHeight, gridCount, tileSize);
   }
-  
+
   void createGrids( int gridWidth, int gridHeight, int gridCount, int tileSize);
-  
+
   // Distance between player to screen / projection plane
   static float screenDistance(float screenWidth, float fovRadians);
 
   // Relative angle between player and a ray column strip
   static float stripAngle(float screenX, float screenDistance);
-  
+
   // Calculate the screen height of a wall strip.
   static float stripScreenHeight(float screenDistance, float correctDistance,
                                  float tileSize);
@@ -115,7 +122,7 @@ public:
                int playerX, int playerY,
                float playerRot, float stripAngle, int stripIdx,
                std::vector<Sprite>* spritesToLookFor=0);
-                      
+
   static void raycast(std::vector<RayHit>& hits,
                       std::vector< std::vector<int> >& grids,
                       int gridWidth, int gridHeight, int tileSize,
@@ -123,14 +130,17 @@ public:
                       float stripAngle, int stripIdx,
                       std::vector<Sprite>* spritesToLookFor=0 );
 
-  std::vector< std::vector<int> > grids;
-  int gridWidth;
-  int gridHeight;
-  int gridCount;
-  int tileSize;
-  
   int cellAt( int x, int y ) { return grids[0][x+y*gridWidth]; }
   int cellAt( int x, int y, int z ) { return grids[z][x+y*gridWidth]; }
+
+  // Reserve wall types above 1000 for door detection
+  static bool isHorizontalDoor(int wallType) { return wallType > 1500; }
+  static bool isVerticalDoor(int wallType) {
+    return wallType > 1000 && wallType <= 1500;
+  }
+  static bool isDoor(int wallType) {
+    return isVerticalDoor(wallType) || isHorizontalDoor(wallType);
+  }
 };
 
 } // raycasting

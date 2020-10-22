@@ -73,7 +73,8 @@ typedef enum SpriteType {
   SpriteTypeHeroine = 7,
   SpriteTypeDruid = 8,
   SpriteTypeProjectile = 9,
-  SpriteTypeProjectileSplash = 10
+  SpriteTypeProjectileSplash = 10,
+  SpriteTypeGates = 11
 } SpriteType;
 
 
@@ -116,6 +117,8 @@ public:
     void addProjectile(int textureid, int x, int y, int size, float rotation);
     float sine(float f);
     float cosine(float f);
+    void toggleDoorPressed();
+    void toggleDoor(int cellX, int cellY);
 private:
     std::vector< std::vector<int> > grids;
     Raycaster raycaster3D;
@@ -127,7 +130,7 @@ private:
     SDL_Window* window;
     SDL_Renderer* renderer;
     Sprite player;
-    SurfaceTexture wallsImage, wallsImageDark;
+    SurfaceTexture wallsImage, wallsImageDark, gatesImage, gatesOpenImage;
     SurfaceTexture gunImage;
     vector<Sprite> sprites;
     std::queue<Sprite> projectilesQueue;
@@ -137,6 +140,8 @@ private:
     Uint32 ceilingColor;
     Mix_Chunk* projectileFireSound;
     Mix_Chunk* projectileExplodeSound;
+    Mix_Chunk* doorOpenSound;
+    Mix_Chunk* doorCloseSound;
     std::map<int,SurfaceTexture> spriteTextures;
     std::vector<Bitmap> floorCeilingBitmaps;
 
@@ -144,6 +149,7 @@ private:
     SDL_Surface* screenSurface;
     int highestCeilingLevel;
     int rayHitsCount;
+    int doors[MAP_WIDTH * MAP_HEIGHT];
 };
 
 float Game::sine(float f) {
@@ -161,6 +167,22 @@ void Game::addSpriteAt( int spriteid, int cellX, int cellY ) {
   s.w = TILE_SIZE;
   s.h = TILE_SIZE;
   s.textureID = spriteid;
+
+   // If sprite is inside a wall, keep moving it up
+  int spriteWallX = s.x / TILE_SIZE;
+  int spriteWallY = s.y / TILE_SIZE;
+  int level = 0;
+  bool inWall = raycaster3D.cellAt(spriteWallX, spriteWallY, level);
+  while (inWall) {
+    level++;
+    inWall = level<raycaster3D.gridCount &&
+             raycaster3D.cellAt(spriteWallX, spriteWallY, level);
+    if (!inWall) {
+      break;
+    }
+  }
+  s.level = level;
+
   sprites.push_back(s);
 }
 
@@ -218,6 +240,12 @@ void Game::reset()
       if (spriteid) {
         addSpriteAt( spriteid, x, y );
       }
+    }
+  }
+
+  for (int y=0; y<MAP_HEIGHT; ++y) {
+    for (int x=0; x<MAP_WIDTH; ++x) {
+      doors[ x + y * MAP_WIDTH ] = 0;
     }
   }
 }
@@ -298,7 +326,19 @@ void Game::start() {
     printf("Error loading walls4dark.bmp\n");
     return;
   }
+  if (!gatesImage.loadBitmap("..\\res\\gates.bmp")) {
+    printf("Error loading gates.bmp\n");
+    return;
+  }
+  if (!gatesOpenImage.loadBitmap("..\\res\\gatesopen.bmp")) {
+    printf("Error loading gatesopen.bmp\n");
+    return;
+  }
+
   wallsImage.createTexture(renderer);
+  wallsImageDark.createTexture(renderer);
+  gatesImage.createTexture(renderer);
+  gatesOpenImage.createTexture(renderer);
 
   if (!gunImage.loadBitmap("..\\res\\gun1a.bmp")) {
     printf("Error loading gun image\n");
@@ -307,6 +347,9 @@ void Game::start() {
   Uint32 colorKey = SDL_MapRGB(gunImage.getSurface()->format,152,0,136);
   SDL_SetColorKey( gunImage.getSurface(), true, colorKey );
   gunImage.createTexture(renderer);
+
+  SDL_SetColorKey( gatesImage.getSurface(), true, colorKey );
+  SDL_SetColorKey( gatesOpenImage.getSurface(), true, colorKey );
 
   // Load Sprite Images
   std::map<int,std::string> spriteFilenames;
@@ -320,6 +363,7 @@ void Game::start() {
   spriteFilenames[ SpriteTypeDruid ] = "druid.bmp";
   spriteFilenames[ SpriteTypeProjectile ] = "plasmball.bmp";
   spriteFilenames[ SpriteTypeProjectileSplash ] = "fireball0.bmp";
+  spriteFilenames[ SpriteTypeGates ] = "gates.bmp";
   for (std::map<int,std::string>::iterator i=spriteFilenames.begin();
        i!=spriteFilenames.end(); ++i)
   {
@@ -380,8 +424,12 @@ void Game::start() {
 
   projectileFireSound = Mix_LoadWAV( "..\\res\\iceball.wav" );
   projectileExplodeSound = Mix_LoadWAV( "..\\res\\explode.wav" );
+  doorOpenSound = Mix_LoadWAV( "..\\res\\door-09.wav" );
+  doorCloseSound = Mix_LoadWAV( "..\\res\\door-08.wav" );
   Mix_VolumeChunk(projectileFireSound, MIX_MAX_VOLUME/2);
   Mix_VolumeChunk(projectileExplodeSound, MIX_MAX_VOLUME/3);
+  Mix_VolumeChunk(doorOpenSound, MIX_MAX_VOLUME);
+  Mix_VolumeChunk(doorCloseSound, MIX_MAX_VOLUME);
 
   this->running = 1 ;
   run();
@@ -389,12 +437,8 @@ void Game::start() {
 
 void Game::draw() {
     // Clear screen
-//    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 139, 185, 249, SDL_ALPHA_OPAQUE );
     SDL_RenderClear(renderer);
-
-//    SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_TRANSPARENT);
-//    SDL_RenderFillRect(renderer, NULL);
 
     static vector<RayHit> allRayHits;
     allRayHits.clear();
@@ -450,7 +494,7 @@ void Game::drawWeapon() {
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "SDL2 Raycast Demo - rayHitsCount=%d - %d FPS",
+    sprintf( szFps, "SDL2 Raycast Demo - %d Ray Hits - %d FPS",
      rayHitsCount, fps );
     SDL_SetWindowTitle(window, szFps);
 }
@@ -777,6 +821,11 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       continue;
     }
 
+    // Ignore doors
+    if (Raycaster::isDoor(rayHit.wallType)) {
+      continue;
+    }
+
     int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
                                                         rayHit.correctDistance,
                                                         TILE_SIZE);
@@ -801,6 +850,9 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       int y = (int)(xEnd*2) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
+      if ( tileX < 0 || tileY < 0 || tileX > MAP_WIDTH || tileY > MAP_HEIGHT ) {
+        continue;
+      }
       int floorTileType = g_floormap[ tileY ][ tileX ];
       Bitmap& bitmap = floorCeilingBitmaps[ floorTileType ];
       Uint32* pix = (Uint32*)bitmap.getPixels();
@@ -850,6 +902,11 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
     RayHit rayHit = rayHits[i];
       // Only draw above furthest wall
     if (!rayHit.wallType) {
+      continue;
+    }
+
+    // Ignore doors
+    if (Raycaster::isDoor(rayHit.wallType)) {
       continue;
     }
 
@@ -980,8 +1037,12 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                                                         TILE_SIZE);
       float sx = rayHit.tileX/TILE_SIZE*TEXTURE_SIZE;
       float sy = TEXTURE_SIZE * (rayHit.wallType-1);
-      bool aboveWall = rayHit.level &&
-                 raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, rayHit.level-1);
+      bool aboveWall = false;
+      if (rayHit.level) {
+        int wallBelow = raycaster3D.cellAt(rayHit.wallX, rayHit.wallY,
+                                           rayHit.level-1);
+        aboveWall = wallBelow && !Raycaster::isDoor(wallBelow);
+      }
       int sxi = (int) sx;
 
       SurfaceTexture* img = rayHit.horizontal ? &wallsImageDark : &wallsImage;
@@ -1055,6 +1116,14 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       // Corner Checking End
       //---------------------
 
+      // Wall is a door
+      if (Raycaster::isDoor(rayHit.wallType)) {
+        sy = 0;
+        img = doors[rayHit.wallX+rayHit.wallY*MAP_WIDTH] ? &gatesOpenImage :
+                                                           &gatesImage;
+      }
+
+      // Draw the wall
       drawWallStrip(*img, sx, sy, rayHit.strip, wallScreenHeight, 1,
                     rayHit.level, aboveWall);
 
@@ -1066,8 +1135,11 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
         // Draw bottom ceiling layer if wall is above an empty space
         int levelBelow = rayHit.level - 1;
+        int cellBelow = levelBelow>=0 ?
+                        raycaster3D.cellAt(rayHit.wallX,rayHit.wallY,levelBelow)
+                        : -1;
         if (levelBelow>=0 &&
-            raycaster3D.cellAt(rayHit.wallX,rayHit.wallY, levelBelow)==0) {
+            (cellBelow==0 || Raycaster::isDoor(cellBelow))) {
           int screenY = DISPLAY_HEIGHT/2;
           int groundWallX = rayHit.wallX;
           int groundWallY = rayHit.wallY;
@@ -1210,21 +1282,7 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
   rc.y = (DISPLAY_HEIGHT - spriteScreenWidth)/2.0f;
   rc.w = spriteScreenWidth;
   rc.h = spriteScreenWidth;
-
-  // If sprite is inside a wall, keep moving it up
-  int spriteWallX = sprite.x / TILE_SIZE;
-  int spriteWallY = sprite.y / TILE_SIZE;
-  int level = 0;
-  bool inWall = raycaster3D.cellAt(spriteWallX, spriteWallY, level);
-  while (inWall) {
-    level++;
-    inWall = level<raycaster3D.gridCount &&
-             raycaster3D.cellAt(spriteWallX, spriteWallY, level);
-    if (!inWall) {
-      break;
-    }
-  }
-  rc.y -= level * spriteScreenWidth;
+  rc.y -= sprite.level * spriteScreenWidth;
 
   return rc;
 }
@@ -1268,6 +1326,13 @@ bool Game::isWallCell(int x, int y) {
   if (y < 0 || y >= MAP_HEIGHT || x < 0 || x >= MAP_WIDTH)
     return true;
 
+  if (Raycaster::isDoor(g_map[y][x])) {
+    if (doors[x + y * MAP_WIDTH]) {
+      return false;
+    }
+    return true;
+  }
+
   // return true if the map block is not 0, ie. if there is a blocking wall.
   return (g_map[y][x]!= 0);
 }
@@ -1304,6 +1369,11 @@ void Game::onKeyUp( SDL_Event* evt ) {
         printf("drawWallsOn = %s\n", drawWallsOn?"true":"false");
         break;
       }
+      case SDLK_e: {
+        printf("Toggle door pressed\n");
+        toggleDoorPressed();
+        break;
+      }
       case SDLK_SPACE: {
         Mix_PlayChannel( -1, projectileFireSound, 0 );
         addProjectile(SpriteTypeProjectile, player.x, player.y, TILE_SIZE,
@@ -1311,6 +1381,56 @@ void Game::onKeyUp( SDL_Event* evt ) {
         break;
       }
     }
+}
+
+void Game::toggleDoor( int x, int y ) {
+  int offset = x + y * MAP_WIDTH;
+  doors[offset] = !doors[offset];
+  if (doors[offset]) {
+    Mix_PlayChannel( -1, doorOpenSound, 0 );
+  }
+  else {
+    Mix_PlayChannel( -1, doorCloseSound, 0 );
+  }
+}
+
+void Game::toggleDoorPressed()
+{
+  const int wallX = player.x / TILE_SIZE;
+  const int wallY = player.y / TILE_SIZE;
+  const int level = 0;
+  int rightWall = 0;
+  int leftWall = 0;
+  int bottomWall = 0;
+  int topWall = 0;
+  if(wallX+1<MAP_WIDTH) {
+    rightWall = raycaster3D.cellAt(wallX+1, wallY, level);
+    if (Raycaster::isDoor(rightWall)) {
+      printf("Opening right door\n");
+      toggleDoor(wallX+1, wallY);
+    }
+  }
+  if(wallX-1>=0) {
+    leftWall = raycaster3D.cellAt(wallX-1, wallY, level);
+    if (Raycaster::isDoor(leftWall)) {
+      printf("Opening left door\n");
+      toggleDoor(wallX-1, wallY);
+    }
+  }
+  if (wallY+1<MAP_HEIGHT) {
+    bottomWall = raycaster3D.cellAt(wallX, wallY+1, level);
+    if (Raycaster::isDoor(bottomWall)) {
+      printf("Opening bottom door\n");
+      toggleDoor(wallX, wallY+1);
+    }
+  }
+  if (wallY-1>=0) {
+    topWall = raycaster3D.cellAt(wallX, wallY-1, level);
+    if (Raycaster::isDoor(topWall)) {
+      printf("Opening top door\n");
+      toggleDoor(wallX, wallY-1);
+    }
+  }
 }
 
 int main(int argc, char** argv){

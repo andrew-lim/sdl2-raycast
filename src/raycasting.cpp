@@ -7,10 +7,12 @@ using namespace std;
 using namespace al::raycasting;
 
 bool RayHit::operator<(const RayHit& b) const {
-  if (distance==b.distance) {
-    return level > b.level; // draw higher levels first
+  // If same level, draw furthest strip first
+  if (level == b.level) {
+    return distance > b.distance;
   }
-  return distance > b.distance; // draw further walls first
+  return level > b.level; // draw high levels first
+
 }
 
 void Raycaster::createGrids( int gridWidth, int gridHeight, int gridCount,
@@ -111,11 +113,18 @@ bool Raycaster::anySpaceBelow( std::vector< std::vector<int> >& grids,
                                int gridWidth, int x, int y, int z )
 {
   if (z==0) {
+    std::vector<int>& grid = grids[ 0 ];
+    if (x>=0 && y>=0) {
+      if (isDoor(grid[x+y*gridWidth])) {
+        return true;
+      }
+    }
     return false;
   }
   for (int level=z-1; level>=0; level--) {
     std::vector<int>& grid = grids[ level ];
-    if (0 == grid[x + y*gridWidth]) {
+    int gridOffset = x + y*gridWidth;
+    if (0 == grid[gridOffset] || isDoor(grid[gridOffset])) {
       return true;
     }
   }
@@ -144,7 +153,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
   if (grids.empty()) {
     return;
   }
-  
+
   float rayAngle = stripAngle + playerRot;
   const float TWO_PI = M_PI*2;
   while (rayAngle < 0) rayAngle += TWO_PI;
@@ -153,9 +162,9 @@ void Raycaster::raycast(vector<RayHit>& hits,
   bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
               (rayAngle>TWO_PI*0.75); // Quadrant 4
   bool up    = rayAngle<TWO_PI*0.5  && rayAngle>=0; // Quadrant 1 and 2
-  
+
   std::vector<int>& groundGrid = grids[0];
-  
+
   for (int level=0; level<(int)grids.size(); ++level) {
     vector<int>& grid = grids[level];
 
@@ -183,7 +192,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         }
       }
     }
-    
+
     //--------------------------------------------------------------------------
     // Check if the player is standing under a wall, and add that wall
     // Figure this out by trial and error
@@ -276,6 +285,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
             }
             spriteRayHit.wallType = 0;
             spriteRayHit.sprite = sprite;
+            spriteRayHit.level = sprite->level;
             spriteRayHit.distance = sprite->distance;
             hits.push_back( spriteRayHit );
           }
@@ -283,10 +293,11 @@ void Raycaster::raycast(vector<RayHit>& hits,
       }
 
       // Check if current cell is a wall
-      if (grid[wallOffset] > 0) {
-        const float distX = playerX - vx;
-        const float distY = playerY - vy;
-        const float blockDist = distX*distX + distY*distY;
+      if (grid[wallOffset]>0 && !isHorizontalDoor(grid[wallOffset])) {
+
+        float distX = playerX - vx;
+        float distY = playerY - vy;
+        float blockDist = distX*distX + distY*distY;
         float texX = fmod(vy, tileSize);
         texX = right ? texX : tileSize - texX; // Facing left, flip image
 
@@ -300,6 +311,12 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.right = right;
         if (blockDist) {
           rayHit.distance = sqrt(blockDist);
+          if (isVerticalDoor(grid[wallOffset])) {
+            float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
+            float halfDistanceSquared = sqrt( halfDistance );
+            rayHit.distance += halfDistanceSquared;
+            texX = fmod(vy+stepy/2, tileSize);
+          }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
         }
         rayHit.horizontal = false;
@@ -385,6 +402,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
             }
             spriteRayHit.wallType = 0;
             spriteRayHit.sprite = sprite;
+            spriteRayHit.level = sprite->level;
             spriteRayHit.distance = sprite->distance;
             hits.push_back( spriteRayHit );
           }
@@ -392,7 +410,8 @@ void Raycaster::raycast(vector<RayHit>& hits,
       }
 
       // Check if current cell is a wall
-      if (grid[wallOffset] > 0) {
+      if (grid[wallOffset]>0 && !isVerticalDoor(grid[wallOffset])) {
+
         const float distX = playerX - hx;
         const float distY = playerY - hy;
         const float blockDist = distX*distX + distY*distY;
@@ -418,6 +437,12 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.right = right;
         if (blockDist) {
           rayHit.distance = sqrt(blockDist);
+          if (isHorizontalDoor(grid[wallOffset])) {
+            float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
+            float halfDistanceSquared = sqrt( halfDistance );
+            rayHit.distance += halfDistanceSquared;
+            texX = fmod(hx+stepx/2, tileSize);
+          }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
         }
         rayHit.horizontal = true;
