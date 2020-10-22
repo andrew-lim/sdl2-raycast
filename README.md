@@ -6,6 +6,7 @@ But there are many more features now including floor/ceiling texture mapping, sp
 You can see a [video of it here](https://www.youtube.com/watch?v=QlM9mbUYROM).
 
 Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/).
+Note: Use E to open doors and spacebar to shoot.
 
 ## Screenshots
 <table style="padding:10px">
