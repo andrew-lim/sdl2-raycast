@@ -494,8 +494,8 @@ void Game::drawWeapon() {
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "SDL2 Raycast Demo - %d Ray Hits - %d FPS",
-     rayHitsCount, fps );
+    sprintf( szFps, "%f Degrees - %d Ray Hits - %d FPS",
+     player.rot*(180/M_PI), rayHitsCount, fps );
     SDL_SetWindowTitle(window, szFps);
 }
 
@@ -1036,6 +1036,9 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                                                         rayHit.correctDistance,
                                                         TILE_SIZE);
       float sx = rayHit.tileX/TILE_SIZE*TEXTURE_SIZE;
+      if (sx >= TEXTURE_SIZE) {
+        sx = TEXTURE_SIZE-1;
+      }
       float sy = TEXTURE_SIZE * (rayHit.wallType-1);
       bool aboveWall = false;
       if (rayHit.level) {
@@ -1372,6 +1375,16 @@ void Game::onKeyUp( SDL_Event* evt ) {
       case SDLK_e: {
         printf("Toggle door pressed\n");
         toggleDoorPressed();
+        break;
+      }
+      case SDLK_o: {
+        printf("Rotation set to 0\n");
+        player.rot = 0;
+        break;
+      }
+      case SDLK_p: {
+        printf("Rotation set to pi degrees\n");
+        player.rot = M_PI;
         break;
       }
       case SDLK_SPACE: {
