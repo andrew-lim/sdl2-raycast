@@ -55,3 +55,5 @@ https://opengameart.org/content/4-projectile-launches
 https://opengameart.org/content/lpc-animated-doors
 
 https://opengameart.org/content/door-open-door-close-set
+
+https://opengameart.org/content/cloudy-sky
