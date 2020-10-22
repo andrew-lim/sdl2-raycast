@@ -5,12 +5,23 @@ But there are many more features now including floor/ceiling texture mapping, sp
 
 You can see a [video of it here](https://www.youtube.com/watch?v=fEDtU9okUxA).
 
-Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/tag/2).
+Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/).
 
 ## Screenshots
-<img src="res/screenshot1_800x600.jpg" width="50%"/>
-<img src="res/screenshot2_800x600.jpg" width="50%"/>
-<img src="res/screenshot3_800x600.jpg" width="50%"/>
+<table style="padding:10px">
+  <tr>
+  	<td width="50%"><img src="res/screenshot4_800x600.jpg" width="50%"/></td>
+  	<td width="50%"><img src="res/screenshot5_800x600.jpg" width="50%"/></td>
+  </tr>
+  <tr>
+  	<td width="50%"><img src="res/screenshot1_800x600.jpg" width="50%"/></td>
+  	<td width="50%"><img src="res/screenshot2_800x600.jpg" width="50%"/></td>
+  </tr>
+  <tr>
+  	<td width="50%"><img src="res/screenshot3_800x600.jpg" width="50%"/></td>
+  	<td width="50%"></td>
+  </tr>
+</table>
 
 ## Building
 You will need SDL2 and SDL2_mixer.
@@ -39,3 +50,7 @@ https://opengameart.org/content/first-person-dungeon-crawl-art-pack
 https://opengameart.org/content/2-high-quality-explosions
 
 https://opengameart.org/content/4-projectile-launches
+
+https://opengameart.org/content/lpc-animated-doors
+
+https://opengameart.org/content/door-open-door-close-set
