@@ -3,7 +3,7 @@
 This was originally a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast).
 But there are many more features now including floor/ceiling texture mapping, sprites and projectiles.
 
-You can see a [video of it here](https://www.youtube.com/watch?v=fEDtU9okUxA).
+You can see a [video of it here](https://www.youtube.com/watch?v=QlM9mbUYROM).
 
 Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/).
 
