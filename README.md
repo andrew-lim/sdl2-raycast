@@ -10,15 +10,15 @@ Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/rele
 ## Screenshots
 <table style="padding:10px">
   <tr>
-  	<td width="50%"><img src="res/screenshot4_800x600.jpg" width="50%"/></td>
-  	<td width="50%"><img src="res/screenshot5_800x600.jpg" width="50%"/></td>
+  	<td width="50%"><img src="res/screenshot4_800x600.jpg"/></td>
+  	<td width="50%"><img src="res/screenshot5_800x600.jpg"/></td>
   </tr>
   <tr>
-  	<td width="50%"><img src="res/screenshot1_800x600.jpg" width="50%"/></td>
-  	<td width="50%"><img src="res/screenshot2_800x600.jpg" width="50%"/></td>
+  	<td width="50%"><img src="res/screenshot1_800x600.jpg"/></td>
+  	<td width="50%"><img src="res/screenshot2_800x600.jpg"/></td>
   </tr>
   <tr>
-  	<td width="50%"><img src="res/screenshot3_800x600.jpg" width="50%"/></td>
+  	<td width="50%"><img src="res/screenshot3_800x600.jpg"/></td>
   	<td width="50%"></td>
   </tr>
 </table>
