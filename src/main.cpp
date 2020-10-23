@@ -165,8 +165,8 @@ void Game::addSpriteAt( int spriteid, int cellX, int cellY ) {
   s.textureID = spriteid;
 
    // If sprite is inside a wall, keep moving it up
-  int spriteWallX = s.x / TILE_SIZE;
-  int spriteWallY = s.y / TILE_SIZE;
+  int spriteWallX = (int)s.x / TILE_SIZE;
+  int spriteWallY = (int)s.y / TILE_SIZE;
   int level = 0;
   bool inWall = raycaster3D.cellAt(spriteWallX, spriteWallY, level);
   while (inWall) {
@@ -622,10 +622,10 @@ void Game::updatePlayer(float elapsedTime) {
 
   float moveStep = player.speed * player.moveSpeed * timeBasedFactor;
   player.rot += -player.dir * player.rotSpeed  * timeBasedFactor;
-  int newX = player.x +  cosine(player.rot) * moveStep;
-  int newY = player.y + -sine(player.rot) * moveStep;
-  int wallX = newX / TILE_SIZE;
-  int wallY = newY / TILE_SIZE;
+  float newX = player.x +  cosine(player.rot) * moveStep;
+  float newY = player.y + -sine(player.rot) * moveStep;
+  int wallX = (int)newX / TILE_SIZE;
+  int wallY = (int)newY / TILE_SIZE;
   if (isWallCell(wallX, wallY)) {
     return;
   }
@@ -657,8 +657,8 @@ void Game::updateProjectiles(float timeElapsed) {
   while (!projectilesQueue.empty()) {
     Sprite newProjectile = projectilesQueue.front();
     if (newProjectile.textureID != SpriteTypeProjectileSplash) {
-      int newX = newProjectile.x +  cosine(newProjectile.rot) *player.moveSpeed;
-      int newY = newProjectile.y + -sine(newProjectile.rot) *player.moveSpeed;
+      float newX = newProjectile.x +  cosine(newProjectile.rot) *player.moveSpeed;
+      float newY = newProjectile.y + -sine(newProjectile.rot) *player.moveSpeed;
       newProjectile.x = newX;
       newProjectile.y = newY;
     }
@@ -692,10 +692,10 @@ void Game::updateProjectiles(float timeElapsed) {
     {
       continue;
     }
-    int newX = projectile.x +  cosine(projectile.rot) * moveStep;
-    int newY = projectile.y + -sine(projectile.rot) * moveStep;
-    int wallX = newX / TILE_SIZE;
-    int wallY = newY / TILE_SIZE;
+    float newX = projectile.x +  cosine(projectile.rot) * moveStep;
+    float newY = projectile.y + -sine(projectile.rot) * moveStep;
+    int wallX = (int)newX / TILE_SIZE;
+    int wallY = (int)newY / TILE_SIZE;
 
     bool wallHit = false;
     bool outOfBounds = false;

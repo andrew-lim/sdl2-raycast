@@ -101,7 +101,8 @@ vector<Sprite*> Raycaster::findSpritesInCell(vector<Sprite>& sprites,
   vector<Sprite*> spritesFound;
   for (vector<Sprite>::iterator it=sprites.begin(); it!=sprites.end(); ++it) {
     Sprite* sprite = &*it;
-    if (cellX == (sprite->x/tileSize) && cellY == (sprite->y/tileSize) ) {
+    if (cellX == ((int)sprite->x/tileSize) &&
+        cellY == ((int)sprite->y/tileSize) ) {
       spritesFound.push_back(sprite);
     }
   }

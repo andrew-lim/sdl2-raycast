@@ -11,7 +11,7 @@ namespace raycasting {
 
 class Sprite {
 public:
-    int x, y ;
+    float x, y ;
     int w, h ;
     int level;
     int dir;         // -1 for left or 1 for right.
