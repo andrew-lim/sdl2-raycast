@@ -29,7 +29,7 @@ IncludeVersionInfo=0
 SupportXPThemes=0
 CompilerSet=3
 CompilerSettings=0000000100000000000000000
-UnitCount=9
+UnitCount=11
 
 [VersionInfo]
 Major=1
@@ -131,6 +131,26 @@ BuildCmd=
 
 [Unit9]
 FileName=..\src\defaults.h
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit10]
+FileName=..\src\settingsmanager.cpp
+CompileCpp=1
+Folder=
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit11]
+FileName=..\src\settingsmanager.h
 CompileCpp=1
 Folder=
 Compile=1

@@ -1,6 +1,15 @@
 #ifndef DEFAULTS_H
 #define DEFAULTS_H
 
+// The longer each raycast strip, the less rays will be used.
+// Increase this to boost FPS but reduce rendering quality.
+// Currently supports values from 1 to 4.
+const int DEFAULT_STRIP_WIDTH = 2;
+
+const int DEFAULT_DISPLAY_WIDTH = 800;
+const int DEFAULT_DISPLAY_HEIGHT = 600;
+const int DEFAULT_FOV_DEGREES = 90;
+
 const int MAP_WIDTH = 32;
 const int MAP_HEIGHT = 24;
 

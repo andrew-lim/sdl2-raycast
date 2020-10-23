@@ -24,33 +24,22 @@ Recommended compiler settings
 #include <windows.h>
 #include "raycasting.h"
 #include "defaults.h"
+#include "settingsmanager.h"
 
 using namespace al::sdl2utils;
 using namespace al::raycasting;
 using namespace std;
-
-// The longer each raycast strip, the less rays will be used.
-// Increase this to boost FPS but reduce rendering quality.
-// Currently supports values from 1 to 4.
-const int STRIP_WIDTH = 2;
 
 // Length of a wall or cell in game units.
 // In the original Wolfenstein 3D it was 8 feet (1 foot = 16 units)
 const int TILE_SIZE = 128;
 
 const int TEXTURE_SIZE = 128; // length of wall textures in pixels
-const int DISPLAY_WIDTH = 800;
-const int DISPLAY_HEIGHT = 600;
 const int MINIMAP_SCALE = 6;
 const int MINIMAP_Y = 0; // position of minimap from top of screen
 const int DESIRED_FPS = 120;
 const int UPDATE_INTERVAL = 1000/DESIRED_FPS;
-const int FOV_DEGREES = 90;
-const float FOV_RADIANS = (float)FOV_DEGREES * M_PI / 180; // FOV in radians
-const int RAYCOUNT = DISPLAY_WIDTH / STRIP_WIDTH;
-const float VIEW_DIST = Raycaster::screenDistance(DISPLAY_WIDTH,FOV_RADIANS);
 const float TWO_PI = M_PI*2;
-
 const int SKYBOX_WIDTH = 512;
 const int SKYBOX_HEIGHT = 128;
 
@@ -95,6 +84,7 @@ public:
     void onKeyUp( SDL_Event* event );
     void reset();
     void run();
+    void printHelp();
     void update(float timeElapsed);
     void drawFloor(vector<RayHit>& rayHits);
     void drawCeiling(vector<RayHit>& rayHits);
@@ -120,6 +110,11 @@ public:
     void toggleDoorPressed();
     void toggleDoor(int cellX, int cellY);
 private:
+    int displayWidth, displayHeight, stripWidth, rayCount;
+    int fovDegrees;
+    float fovRadians, viewDist;
+    bool fullscreen;
+
     std::vector< std::vector<int> > grids;
     Raycaster raycaster3D;
     std::vector<int> ceilingGrid;
@@ -135,6 +130,7 @@ private:
     vector<Sprite> sprites;
     std::queue<Sprite> projectilesQueue;
     bool drawMiniMapOn, drawTexturedFloorOn, drawCeilingOn, drawWallsOn;
+    bool drawWeaponOn;
     Bitmap ceilingBitmap;
     SDL_Surface* skyboxSurface;
     Uint32 ceilingColor;
@@ -200,13 +196,12 @@ void Game::addProjectile(int textureid, int x, int y, int size, float rotation){
 Game::Game()
 :frameSkip(0), running(0), window(NULL), renderer(NULL) {
   srand (time(NULL));
-
   drawMiniMapOn = true;
   drawTexturedFloorOn = true;
   drawCeilingOn = true;
+  drawWeaponOn = true;
   drawWallsOn = true;
   rayHitsCount = 0;
-
   reset();
 }
 
@@ -251,19 +246,30 @@ void Game::reset()
 }
 
 void Game::start() {
-  printf("Resolution   = %d x %d\n", DISPLAY_WIDTH, DISPLAY_HEIGHT);
+  SettingsManager settingsManager;
+  settingsManager.loadConfig("config.ini");
+
+  displayWidth = settingsManager.getInt("displayWidth",DEFAULT_DISPLAY_WIDTH);
+  displayHeight =settingsManager.getInt("displayHeight",DEFAULT_DISPLAY_HEIGHT);
+  stripWidth = settingsManager.getInt("stripWidth", DEFAULT_STRIP_WIDTH);
+  rayCount = displayWidth / stripWidth;
+  fovDegrees = settingsManager.getInt("fov", DEFAULT_FOV_DEGREES);
+  fovRadians = (float)fovDegrees * M_PI / 180;
+  viewDist = Raycaster::screenDistance(displayWidth, fovRadians);
+  fullscreen = settingsManager.getInt("fullscreen", 0);
+
+  printf("Resolution   = %d x %d\n", displayWidth, displayHeight);
   printf("Map size     = %d x %d\n", MAP_WIDTH, MAP_HEIGHT);
+  printf("FOV          = %d degrees\n", fovDegrees);
+  printf("stripWidth   = %d\n", stripWidth);
+  printf("rayCount     = %d\n", displayWidth/stripWidth);
+  printf("Distance to Projection Plane = %f\n", viewDist);
   printf("Wall size    = %d game units\n", TILE_SIZE);
   printf("Texture Size = %d pixels\n", TEXTURE_SIZE);
-  printf("FOV          = %d degrees\n", FOV_DEGREES);
-  printf("STRIP_WIDTH  = %d\n", STRIP_WIDTH);
-  printf("RAYCOUNT     = %d\n", RAYCOUNT);
-  printf("Distance to Projection Plane = %f\n", VIEW_DIST);
   int flags = SDL_WINDOW_SHOWN ;
   if (SDL_Init(SDL_INIT_EVERYTHING)) {
       return ;
   }
-
 
   SDL_version compiled;
   SDL_version linked;
@@ -278,19 +284,18 @@ void Game::start() {
   window = SDL_CreateWindow("SDL2 Raycast Engine",
                              SDL_WINDOWPOS_CENTERED,
                             SDL_WINDOWPOS_CENTERED,
-                            DISPLAY_WIDTH,
-                             DISPLAY_HEIGHT,
+                            displayWidth,
+                             displayHeight,
                              flags);
 
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED );
-//  SDL_SetWindowResizable(window, SDL_TRUE );
-//  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+  SDL_SetWindowResizable(window, SDL_TRUE );
 
   screenTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-                                    SDL_TEXTUREACCESS_TARGET, DISPLAY_WIDTH,
-                                    DISPLAY_HEIGHT);
+                                    SDL_TEXTUREACCESS_TARGET, displayWidth,
+                                    displayHeight);
 
-  screenSurface = SDL_CreateRGBSurface(0, DISPLAY_WIDTH, DISPLAY_HEIGHT, 32,
+  screenSurface = SDL_CreateRGBSurface(0, displayWidth, displayHeight, 32,
                                        0x00FF0000,
                                        0x0000FF00,
                                        0x000000FF,
@@ -305,6 +310,10 @@ void Game::start() {
   }
   if (rendererInfo.flags & SDL_RENDERER_ACCELERATED) {
     printf("- SDL_RENDERER_ACCELERATED\n");
+  }
+
+  if (fullscreen) {
+    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
   }
 
   Uint32 pf = SDL_GetWindowPixelFormat(window);
@@ -411,9 +420,7 @@ void Game::start() {
     printf("Error loading skybox2.bmp\n");
     return;
   }
-   skyboxSurface = SDL_ConvertSurface(skyboxSurface, screenSurface->format, 0);
-
-//  SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+  skyboxSurface = SDL_ConvertSurface(skyboxSurface, screenSurface->format, 0);
 
   //Initialize SDL_mixer
   if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 2048 ) < 0 )
@@ -432,6 +439,7 @@ void Game::start() {
   Mix_VolumeChunk(doorCloseSound, MIX_MAX_VOLUME);
 
   this->running = 1 ;
+  printHelp();
   run();
 }
 
@@ -482,20 +490,23 @@ void Game::drawLine(int startX, int startY, int endX, int endY,
 }
 
 void Game::drawWeapon() {
-  float gunScale = DISPLAY_WIDTH / 320;
+  if (!drawWeaponOn) {
+    return;
+  }
+  float gunScale = displayHeight / 320.0;
   SDL_Rect dstRect;
   SDL_Surface* gunSurface = gunImage.getSurface();
   dstRect.w = gunSurface->w * gunScale;
   dstRect.h = gunSurface->h * gunScale;
-  dstRect.x = (DISPLAY_WIDTH - dstRect.w) / 2;
-  dstRect.y = DISPLAY_HEIGHT - dstRect.h;
+  dstRect.x = (displayWidth - dstRect.w) / 2;
+  dstRect.y = displayHeight - dstRect.h;
   SDL_BlitScaled(gunSurface, NULL, screenSurface, &dstRect);
 }
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "%f Degrees - %d Ray Hits - %d FPS",
-     player.rot*(180/M_PI), rayHitsCount, fps );
+    sprintf( szFps, "Rotation=%ddegs RayHits=%d FPS=%d",
+     (int)(player.rot*(180/M_PI)), rayHitsCount, fps );
     SDL_SetWindowTitle(window, szFps);
 }
 
@@ -541,6 +552,22 @@ void Game::run() {
         // sleep?
 //        SDL_Delay( 1 );
     }
+}
+
+void Game::printHelp() {
+  printf("======== SDL2 Raycasting Demo =======\n");
+  printf("=== https://github.com/andrew-lim ===\n");
+  printf("Controls:\n"
+         "Arrow keys or WASD to move\n"
+         "E     - Open Doors\n"
+         "Space - Shoot\n"
+         "M     - Toggle minimap\n"
+         "F     - Toggle textured floors\n"
+         "C     - Toggle skybox and ceilings\n"
+         "G     - Toggle weapon visibility\n"
+         "H     - Print this message again\n\n"
+         "See config.ini for more settings.\n"
+         "=====================================\n");
 }
 
 void Game::update(float timeElapsed) {
@@ -800,9 +827,9 @@ void Game::drawFloor(vector<RayHit>& rayHits)
   if (!drawTexturedFloorOn) {
     SDL_Rect rc;
     rc.x = 0;
-    rc.y = DISPLAY_HEIGHT/2;
-    rc.w = DISPLAY_WIDTH;
-    rc.h = DISPLAY_HEIGHT/2;
+    rc.y = displayHeight/2;
+    rc.w = displayWidth;
+    rc.h = displayHeight/2;
     SDL_FillRect(screenSurface, &rc,SDL_MapRGB(screenSurface->format,52,158,0));
     return;
   }
@@ -826,17 +853,17 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       continue;
     }
 
-    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
+    int wallScreenHeight = Raycaster::stripScreenHeight(viewDist,
                                                         rayHit.correctDistance,
                                                         TILE_SIZE);
-    int screenX = rayHit.strip * STRIP_WIDTH;
-    int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 + wallScreenHeight-1;
+    int screenX = rayHit.strip * stripWidth;
+    int screenY = (displayHeight - wallScreenHeight)/2 + wallScreenHeight-1;
     float eyeHeight = TILE_SIZE / 2;
-    float centerPlane = DISPLAY_HEIGHT / 2;
-    for (; screenY<DISPLAY_HEIGHT; screenY++)
+    float centerPlane = displayHeight / 2;
+    for (; screenY<displayHeight; screenY++)
     {
       float ratio= eyeHeight/(screenY-centerPlane);
-      float diagonalDistance = (float)VIEW_DIST * (float)ratio;
+      float diagonalDistance = (float)viewDist * (float)ratio;
 
       // To correct for fisheye effect
       float correctDistance = diagonalDistance *
@@ -859,15 +886,15 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       if (!pix) {
         continue;
       }
-      int dstPixel = screenX + screenY * DISPLAY_WIDTH;
+      int dstPixel = screenX + screenY * displayWidth;
       int srcPixel = y * bitmap.getWidth() + x;
       streamingPixels[dstPixel] = pix[srcPixel];
 
       // Clamp the strip width so we don't write out of bounds of  the
       // streamingPixels. Not sure if this is necessary.
-      int stripWidth = STRIP_WIDTH;
-      while (stripWidth * rayHit.strip >= DISPLAY_WIDTH) {
-        stripWidth--;
+      int stripWidth2 = stripWidth;
+      while (stripWidth2 * rayHit.strip >= displayWidth) {
+        stripWidth2--;
       }
 
       switch (stripWidth) {
@@ -890,8 +917,8 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
     SDL_Rect rc;
     rc.x = 0;
     rc.y = 0;
-    rc.w = DISPLAY_WIDTH;
-    rc.h = DISPLAY_HEIGHT/2;
+    rc.w = displayWidth;
+    rc.h = displayHeight/2;
     SDL_FillRect(screenSurface, &rc,
                  SDL_MapRGB(screenSurface->format,139, 185, 249));
     return;
@@ -919,18 +946,18 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       }
     }
 
-    int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
+    int wallScreenHeight = Raycaster::stripScreenHeight(viewDist,
                                                         rayHit.correctDistance,
                                                         TILE_SIZE);
-    int screenX = rayHit.strip * STRIP_WIDTH;
-    int screenY = (DISPLAY_HEIGHT - wallScreenHeight)/2 - 1;
+    int screenX = rayHit.strip * stripWidth;
+    int screenY = (displayHeight - wallScreenHeight)/2 - 1;
     float eyeHeight = TILE_SIZE / 2;
-    float centerPlane = DISPLAY_HEIGHT / 2;
+    float centerPlane = displayHeight / 2;
     for (;screenY>=0;screenY--)
     {
       float ceilingHeight = TILE_SIZE * highestCeilingLevel;
       float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
-      float diagonalDistance = (float)VIEW_DIST * (float)ratio;
+      float diagonalDistance = (float)viewDist * (float)ratio;
 
       // To correct for fisheye effect
       float correctDistance = diagonalDistance *
@@ -950,14 +977,14 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       int tileY = yEnd / TILE_SIZE;
 
       int tileType = outOfBounds ? 0 : g_ceilingmap[ tileY ][ tileX ];
-      int dstPixel = screenX + screenY * DISPLAY_WIDTH;
+      int dstPixel = screenX + screenY * displayWidth;
       int srcPixel = y * TEXTURE_SIZE + x;
 
       // Clamp the strip width so we don't write out of bounds of  the
       // streamingPixels. Not sure if this is necessary.
-      int stripWidth = STRIP_WIDTH;
-      while (stripWidth * rayHit.strip >= DISPLAY_WIDTH) {
-        stripWidth--;
+      int stripWidth2 = stripWidth;
+      while (stripWidth2 * rayHit.strip >= displayWidth) {
+        stripWidth2--;
       }
 
       if (tileType) {
@@ -980,9 +1007,9 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
       }
       else {
         const int PIXEL_LENGTH = SKYBOX_WIDTH * SKYBOX_HEIGHT;
-        int skyboxY = (screenY / (DISPLAY_HEIGHT/2.0f) * SKYBOX_HEIGHT);
+        int skyboxY = (screenY / (displayHeight/2.0f) * SKYBOX_HEIGHT);
         Uint32* pix2 = (Uint32*) skyboxSurface->pixels;
-        int skyboxX = (float)screenX / DISPLAY_WIDTH * SKYBOX_WIDTH;
+        int skyboxX = (float)screenX / displayWidth * SKYBOX_WIDTH;
         float rotation = player.rot;
   //        while (rotation < 0) rotation += TWO_PI;
   //        while (rotation >= TWO_PI) rotation -= TWO_PI;
@@ -1032,7 +1059,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
     // Wall
     if (rayHit.wallType) {
-      int wallScreenHeight = Raycaster::stripScreenHeight(VIEW_DIST,
+      int wallScreenHeight = Raycaster::stripScreenHeight(viewDist,
                                                         rayHit.correctDistance,
                                                         TILE_SIZE);
       float sx = rayHit.tileX/TILE_SIZE*TEXTURE_SIZE;
@@ -1132,9 +1159,9 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
       // Ceilings below floating blocks
       if (drawCeilingOn) {
-        int screenX = rayHit.strip * STRIP_WIDTH;
+        int screenX = rayHit.strip * stripWidth;
         float eyeHeight = TILE_SIZE / 2;
-        float centerPlane = DISPLAY_HEIGHT / 2;
+        float centerPlane = displayHeight / 2;
 
         // Draw bottom ceiling layer if wall is above an empty space
         int levelBelow = rayHit.level - 1;
@@ -1143,7 +1170,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                         : -1;
         if (levelBelow>=0 &&
             (cellBelow==0 || Raycaster::isDoor(cellBelow))) {
-          int screenY = DISPLAY_HEIGHT/2;
+          int screenY = displayHeight/2;
           int groundWallX = rayHit.wallX;
           int groundWallY = rayHit.wallY;
           bool wasInCeilingTile = false;
@@ -1151,7 +1178,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
           {
             float ceilingHeight = TILE_SIZE * (rayHit.level);
             float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
-            float diagonalDistance = (float)VIEW_DIST * (float)ratio;
+            float diagonalDistance = (float)viewDist * (float)ratio;
 
             // To correct for fisheye effect
             float correctDistance = diagonalDistance *
@@ -1186,9 +1213,9 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                 continue;
               }
               Uint32* screenPixels = (Uint32*) screenSurface->pixels;
-              int dstPixel = screenX + screenY * DISPLAY_WIDTH;
+              int dstPixel = screenX + screenY * displayWidth;
               int srcPixel = y * bitmap.getWidth() + x;
-              switch (STRIP_WIDTH) {
+              switch (stripWidth) {
                 case 4:
                   screenPixels[dstPixel+3] = pix[srcPixel];
                 case 3:
@@ -1230,9 +1257,9 @@ void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
   float sy = textureY;
   float swidth = 1;
   float sheight = TEXTURE_SIZE;
-  float imgx = stripIdx * STRIP_WIDTH;
-  float imgy = (DISPLAY_HEIGHT - wallScreenHeight)/2;
-  float imgw = STRIP_WIDTH;
+  float imgx = stripIdx * stripWidth;
+  float imgy = (displayHeight - wallScreenHeight)/2;
+  float imgw = stripWidth;
   float imgh = wallScreenHeight;
 
   SDL_Rect srcrect;
@@ -1275,14 +1302,14 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
 
   float spriteAngle = atan2(dy, dx) + player.rot;
   float spriteDistance = cos(spriteAngle)*dist;
-  float spriteScreenWidth = TILE_SIZE * VIEW_DIST / spriteDistance;
+  float spriteScreenWidth = TILE_SIZE * viewDist / spriteDistance;
 
   // X-position on screen
-  float x = tan(spriteAngle) * VIEW_DIST;
+  float x = tan(spriteAngle) * viewDist;
 
   SDL_Rect rc;
-  rc.x = (DISPLAY_WIDTH/2) + x - (spriteScreenWidth/2);
-  rc.y = (DISPLAY_HEIGHT - spriteScreenWidth)/2.0f;
+  rc.x = (displayWidth/2) + x - (spriteScreenWidth/2);
+  rc.y = (displayHeight - spriteScreenWidth)/2.0f;
   rc.w = spriteScreenWidth;
   rc.h = spriteScreenWidth;
   rc.y -= sprite.level * spriteScreenWidth;
@@ -1294,9 +1321,9 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
 {
   vector<Sprite*> spritesFound;
   rayHitsCount = 0;
-  for (int strip=0; strip<RAYCOUNT; strip++) {
-    float screenX = (RAYCOUNT/2 - strip) * STRIP_WIDTH;
-    const float stripAngle = Raycaster::stripAngle(screenX, VIEW_DIST);
+  for (int strip=0; strip<rayCount; strip++) {
+    float screenX = (rayCount/2 - strip) * stripWidth;
+    const float stripAngle = Raycaster::stripAngle(screenX, viewDist);
 
     vector<RayHit> rayHitsFound;
     raycaster3D.raycast(rayHitsFound, player.x, player.y, player.rot,
@@ -1372,6 +1399,10 @@ void Game::onKeyUp( SDL_Event* evt ) {
         printf("drawWallsOn = %s\n", drawWallsOn?"true":"false");
         break;
       }
+      case SDLK_h: {
+        printHelp();
+        break;
+      }
       case SDLK_e: {
         printf("Toggle door pressed\n");
         toggleDoorPressed();
@@ -1385,6 +1416,11 @@ void Game::onKeyUp( SDL_Event* evt ) {
       case SDLK_p: {
         printf("Rotation set to pi degrees\n");
         player.rot = M_PI;
+        break;
+      }
+      case SDLK_g: {
+        drawWeaponOn = !drawWeaponOn;
+        printf("drawWeaponOn = %s\n", drawWeaponOn?"true":"false");
         break;
       }
       case SDLK_SPACE: {
