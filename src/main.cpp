@@ -1277,6 +1277,12 @@ void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
                          int stripIdx, int wallScreenHeight, int floors,
                          int level, bool aboveWall, bool belowWall)
 {
+  // Sometimes a wall that is right in front of the player has a very large
+  // height. SDL2 cannot draw it so we have to clamp the value.
+  if (wallScreenHeight > SDL_MAX_SINT16) {
+    wallScreenHeight = SDL_MAX_SINT16;
+  }
+  
   float sx = textureX;
   float sy = textureY;
   float swidth = 1;
