@@ -834,7 +834,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     return;
   }
 
-  Uint32* streamingPixels = (Uint32*) screenSurface->pixels;
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
 
@@ -860,6 +860,11 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     int screenY = (displayHeight - wallScreenHeight)/2 + wallScreenHeight-1;
     float eyeHeight = TILE_SIZE / 2;
     float centerPlane = displayHeight / 2;
+
+    // Specifies many times a texture is repeated on one side. E.g.
+    // If set to 2, a texture will repeat 4 times (because 2x2) inside itself.
+    int textureRepeat = 2;
+
     for (; screenY<displayHeight; screenY++)
     {
       float ratio= eyeHeight/(screenY-centerPlane);
@@ -873,8 +878,8 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       float yEnd = (correctDistance * -sine(rayHit.rayAngle));
       yEnd += player.y;
       xEnd += player.x;
-      int x = (int)(yEnd*2) % TILE_SIZE;
-      int y = (int)(xEnd*2) % TILE_SIZE;
+      int x = (int)(yEnd*textureRepeat) % TILE_SIZE;
+      int y = (int)(xEnd*textureRepeat) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
       if ( tileX < 0 || tileY < 0 || tileX > MAP_WIDTH || tileY > MAP_HEIGHT ) {
@@ -886,12 +891,14 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       if (!pix) {
         continue;
       }
+      int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+      int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
       int dstPixel = screenX + screenY * displayWidth;
-      int srcPixel = y * bitmap.getWidth() + x;
-      streamingPixels[dstPixel] = pix[srcPixel];
+      int srcPixel = textureY * bitmap.getWidth() + textureX;
+      screenPixels[dstPixel] = pix[srcPixel];
 
-      // Clamp the strip width so we don't write out of bounds of  the
-      // streamingPixels. Not sure if this is necessary.
+      // Clamp the strip width so we don't write out of bounds of the
+      // screenPixels. Not sure if this is necessary.
       int stripWidth2 = stripWidth;
       while (stripWidth2 * rayHit.strip >= displayWidth) {
         stripWidth2--;
@@ -899,11 +906,11 @@ void Game::drawFloor(vector<RayHit>& rayHits)
 
       switch (stripWidth) {
         case 4:
-          streamingPixels[dstPixel+3] = pix[srcPixel];
+          screenPixels[dstPixel+3] = pix[srcPixel];
         case 3:
-          streamingPixels[dstPixel+2] = pix[srcPixel];
+          screenPixels[dstPixel+2] = pix[srcPixel];
         case 2:
-          streamingPixels[dstPixel+1] = pix[srcPixel];
+          screenPixels[dstPixel+1] = pix[srcPixel];
         default:
           break;
       }
@@ -923,7 +930,7 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
                  SDL_MapRGB(screenSurface->format,139, 185, 249));
     return;
   }
-  Uint32* streamingPixels = (Uint32*) screenSurface->pixels;
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
 
   for (int i=0; i<(int)rayHits.size(); i++) {
     RayHit rayHit = rayHits[i];
@@ -976,13 +983,14 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
       int y = (int)(xEnd) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
-
+      int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+      int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
       int tileType = outOfBounds ? 0 : g_ceilingmap[ tileY ][ tileX ];
       int dstPixel = screenX + screenY * displayWidth;
-      int srcPixel = y * TEXTURE_SIZE + x;
+      int srcPixel = textureY * TEXTURE_SIZE + textureX;
 
       // Clamp the strip width so we don't write out of bounds of  the
-      // streamingPixels. Not sure if this is necessary.
+      // screenPixels. Not sure if this is necessary.
       int stripWidth2 = stripWidth;
       while (stripWidth2 * rayHit.strip >= displayWidth) {
         stripWidth2--;
@@ -996,13 +1004,13 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
         }
         switch (stripWidth) {
           case 4:
-            streamingPixels[dstPixel+3] = pix[srcPixel];
+            screenPixels[dstPixel+3] = pix[srcPixel];
           case 3:
-            streamingPixels[dstPixel+2] = pix[srcPixel];
+            screenPixels[dstPixel+2] = pix[srcPixel];
           case 2:
-            streamingPixels[dstPixel+1] = pix[srcPixel];
+            screenPixels[dstPixel+1] = pix[srcPixel];
           default:
-            streamingPixels[dstPixel] = pix[srcPixel];
+            screenPixels[dstPixel] = pix[srcPixel];
             break;
         }
       }
@@ -1025,13 +1033,13 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
         Uint32 pixel = pix2[ offset ];
         switch (stripWidth) {
           case 4:
-            streamingPixels[dstPixel+3] = pixel;
+            screenPixels[dstPixel+3] = pixel;
           case 3:
-            streamingPixels[dstPixel+2] = pixel;
+            screenPixels[dstPixel+2] = pixel;
           case 2:
-            streamingPixels[dstPixel+1] = pixel;
+            screenPixels[dstPixel+1] = pixel;
           default:
-            streamingPixels[dstPixel] = pixel;
+            screenPixels[dstPixel] = pixel;
             break;
         }
       }
@@ -1226,9 +1234,11 @@ void Game::drawWorld(vector<RayHit>& rayHits)
               if (!pix) {
                 continue;
               }
+              int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+              int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
               Uint32* screenPixels = (Uint32*) screenSurface->pixels;
               int dstPixel = screenX + screenY * displayWidth;
-              int srcPixel = y * bitmap.getWidth() + x;
+              int srcPixel = textureY * bitmap.getWidth() + textureX;
               switch (stripWidth) {
                 case 4:
                   screenPixels[dstPixel+3] = pix[srcPixel];
