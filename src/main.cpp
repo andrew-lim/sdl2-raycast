@@ -87,7 +87,7 @@ public:
     void printHelp();
     void update(float timeElapsed);
     void drawFloor(vector<RayHit>& rayHits);
-    void drawCeiling(vector<RayHit>& rayHits);
+    void drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits);
     void drawWeapon();
     void drawMiniMap();
     void drawMiniMapSprites();
@@ -98,7 +98,7 @@ public:
     void drawRays(vector<RayHit>& rayHits);
     void drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
                        int stripIdx, int wallScreenHeight, int floors=1,
-                       int level=0, bool aboveWall=false);
+                       int level=0, bool aboveWall=false, bool beloWall=false);
     void drawWorld(vector<RayHit>& rayHits);
     void raycastWorld(vector<RayHit>& rayHits);
     bool isWallCell(int wallX, int wallY);
@@ -911,7 +911,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
   }
 }
 
-void Game::drawCeiling(vector<RayHit>& rayHits)
+void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
 {
   if (!drawCeilingOn) {
     SDL_Rect rc;
@@ -950,9 +950,10 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
                                                         rayHit.correctDistance,
                                                         TILE_SIZE);
     int screenX = rayHit.strip * stripWidth;
-    int screenY = (displayHeight - wallScreenHeight)/2 - 1;
+    int screenY = (displayHeight - wallScreenHeight)/2;
     float eyeHeight = TILE_SIZE / 2;
     float centerPlane = displayHeight / 2;
+    // Draw Highest Ceiling
     for (;screenY>=0;screenY--)
     {
       float ceilingHeight = TILE_SIZE * highestCeilingLevel;
@@ -1005,14 +1006,13 @@ void Game::drawCeiling(vector<RayHit>& rayHits)
             break;
         }
       }
+      // Skybox Pixels
       else {
         const int PIXEL_LENGTH = SKYBOX_WIDTH * SKYBOX_HEIGHT;
         int skyboxY = (screenY / (displayHeight/2.0f) * SKYBOX_HEIGHT);
         Uint32* pix2 = (Uint32*) skyboxSurface->pixels;
         int skyboxX = (float)screenX / displayWidth * SKYBOX_WIDTH;
         float rotation = player.rot;
-  //        while (rotation < 0) rotation += TWO_PI;
-  //        while (rotation >= TWO_PI) rotation -= TWO_PI;
         int skyboxOffsetX = -((rotation/TWO_PI)*SKYBOX_WIDTH)*4;
         skyboxX += skyboxOffsetX;
         int offset = (skyboxX%SKYBOX_WIDTH +skyboxY*SKYBOX_WIDTH);
@@ -1044,7 +1044,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
   // Depth sorth by furthest first. Draw using painter's algorithm.
   std::sort(rayHits.begin(), rayHits.end());
 
-  drawCeiling(rayHits);
+  drawSkyboxAndHighestCeiling(rayHits);
   drawFloor(rayHits);
 
   //-----------------------
@@ -1068,10 +1068,14 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       }
       float sy = TEXTURE_SIZE * (rayHit.wallType-1);
       bool aboveWall = false;
+      bool belowWall = false;
       if (rayHit.level) {
         int wallBelow = raycaster3D.cellAt(rayHit.wallX, rayHit.wallY,
                                            rayHit.level-1);
         aboveWall = wallBelow && !Raycaster::isDoor(wallBelow);
+
+        belowWall= rayHit.level+1 < highestCeilingLevel &&
+                   raycaster3D.cellAt(rayHit.wallX,rayHit.wallY,rayHit.level+1);
       }
       int sxi = (int) sx;
 
@@ -1155,7 +1159,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
       // Draw the wall
       drawWallStrip(*img, sx, sy, rayHit.strip, wallScreenHeight, 1,
-                    rayHit.level, aboveWall);
+                    rayHit.level, aboveWall, belowWall);
 
       // Ceilings below floating blocks
       if (drawCeilingOn) {
@@ -1173,8 +1177,13 @@ void Game::drawWorld(vector<RayHit>& rayHits)
           int screenY = displayHeight/2;
           int groundWallX = rayHit.wallX;
           int groundWallY = rayHit.wallY;
+          int wallBottom = (displayHeight-wallScreenHeight)/2;
+          if (rayHit.level>0) {
+            wallBottom -= wallScreenHeight*(rayHit.level-1) ;
+          }
           bool wasInCeilingTile = false;
-          for (;screenY>=0;screenY--)
+          const int highestPoint = std::max( 0, wallBottom);
+          for (;screenY>=highestPoint;screenY--)
           {
             float ceilingHeight = TILE_SIZE * (rayHit.level);
             float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
@@ -1197,14 +1206,19 @@ void Game::drawWorld(vector<RayHit>& rayHits)
             bool outOfBounds =xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE ||
                               yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE;
             bool sameTile = wallX==groundWallX&&wallY==groundWallY;
-            if (outOfBounds || !sameTile) {
-              if (wasInCeilingTile) {
-                break;
+
+            int tileType = 0;
+            if (!outOfBounds) {
+              if (sameTile) {
+                tileType = rayHit.wallType;
+              }
+              else {
+                if (wasInCeilingTile) {
+                  tileType = rayHit.wallType;
+                }
               }
             }
 
-            int tileType = outOfBounds?0
-                                      :(sameTile);
             if (tileType) {
               wasInCeilingTile = true;
               Bitmap& bitmap = floorCeilingBitmaps[ rayHit.wallType ];
@@ -1251,7 +1265,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
 
 void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
                          int stripIdx, int wallScreenHeight, int floors,
-                         int level, bool aboveWall)
+                         int level, bool aboveWall, bool belowWall)
 {
   float sx = textureX;
   float sy = textureY;
@@ -1274,11 +1288,11 @@ void Game::drawWallStrip(SurfaceTexture& img, float textureX, float textureY,
   dstrect.w = imgw;
   dstrect.h = imgh;
 
-  dstrect.y--;
-  // Hack: Make floating walls slightly longer to hide seams and tears
-  // caused by ceiling drawing
-  if (level && !aboveWall) {
-    dstrect.h += 1 + level;
+  // Hack: Make the highest blocks and walls with space below/above them
+  // slightly taller to hide seams and tears caused by ceiling drawing
+  if (level==highestCeilingLevel-1 || (level && (!aboveWall||!belowWall))) {
+    dstrect.y--;
+    dstrect.h++;
   }
 
   dstrect.y -= level * wallScreenHeight;
