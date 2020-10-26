@@ -11,7 +11,7 @@ namespace raycasting {
 
 class Sprite {
 public:
-    float x, y ;
+    float x, y, z;
     int w, h ;
     int level;
     int dir;         // -1 for left or 1 for right.
@@ -25,7 +25,9 @@ public:
     int frameRate;
     int frame;
     bool hidden;
-    Sprite() :x(0), y(0), w(0), h(0), level(0), dir(0), rot(0), speed(0) {
+    bool jumping;
+    float heightJumped;
+    Sprite() :x(0), y(0), z(0), w(0), h(0), level(0), dir(0), rot(0), speed(0) {
       moveSpeed = 0;
       rotSpeed = 0;
       distance = 0;
@@ -34,6 +36,8 @@ public:
       frameRate = 0;
       frame = 0;
       hidden = false;
+      jumping = false;
+      heightJumped = 0;
     }
 } ;
 
