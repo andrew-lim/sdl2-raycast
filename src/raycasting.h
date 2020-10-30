@@ -116,6 +116,16 @@ public:
   // This checks multiple levels of blocks, not just the one directly below.
   static bool anySpaceBelow( std::vector< std::vector<int> >& grids,
                              int gridWidth, int x, int y, int z );
+                             
+   // Checks if there are any empty blocks above specified block.
+  // This checks multiple levels of blocks, not just the one directly above.
+  static bool anySpaceAbove( std::vector< std::vector<int> >& grids,
+                             int gridWidth, int x, int y, int z );
+
+  static
+  bool needsNextWall(std::vector< std::vector<int> >& grids,
+                     float playerZ, int tileSize,
+                     int gridWidth, int x, int y, int z );
 
   /*
   The raycast methods look for collisions with walls and sprites.
@@ -123,14 +133,15 @@ public:
   These functions do not perform any direct rendering.
   */
   void raycast(std::vector<RayHit>& rayHits,
-               int playerX, int playerY,
+               int playerX, int playerY, float playerZ,
                float playerRot, float stripAngle, int stripIdx,
                std::vector<Sprite>* spritesToLookFor=0);
 
   static void raycast(std::vector<RayHit>& hits,
                       std::vector< std::vector<int> >& grids,
                       int gridWidth, int gridHeight, int tileSize,
-                      int playerX, int playerY, float playerRot,
+                      int playerX, int playerY, float playerZ,
+                      float playerRot,
                       float stripAngle, int stripIdx,
                       std::vector<Sprite>* spritesToLookFor=0 );
 
