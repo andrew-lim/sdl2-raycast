@@ -84,8 +84,8 @@ struct RayHitSorter {
   {}
   bool operator()(const RayHit& a, const RayHit& b) const
   {
-    // Hack for door ceilings, always draw the higher levels first, so the
-    // door is always drawn below
+    // Workaround for ground floor door ceilings, always draw the higher
+    // levels first, so the door is always drawn below the ceiling.
     if ( _eye < TILE_SIZE ) {
       if (a.level == b.level) {
         return a.distance > b.distance;
@@ -158,6 +158,7 @@ private:
     int fovDegrees;
     float fovRadians, viewDist;
     bool fullscreen;
+    float pitch;
 
     std::vector< std::vector<int> > grids;
     Raycaster raycaster3D;
@@ -255,6 +256,8 @@ Game::~Game() {
 
 void Game::reset()
 {
+  pitch = 0;
+
   highestCeilingLevel = 3;
 
   raycaster3D.createGrids(MAP_WIDTH, MAP_HEIGHT,highestCeilingLevel, TILE_SIZE);
@@ -643,6 +646,24 @@ void Game::update(float timeElapsed) {
     else {
       player.dir = 0; // stop rotating
     }
+
+    float timeBasedFactor = timeElapsed / UPDATE_INTERVAL;
+    static const float MAX_PITCH = displayHeight/2;
+    static const float PITCH_SPEED = 10 * timeBasedFactor;
+
+    if (keys[SDLK_PAGEDOWN] || (!keys[SDLK_PAGEUP]&&pitch>0)) {
+      pitch -= PITCH_SPEED;
+      if (pitch < -MAX_PITCH) {
+        pitch = -MAX_PITCH;
+      }
+    }
+    else if (keys[SDLK_PAGEUP] || (!keys[SDLK_PAGEDOWN]&&pitch<0)) {
+      pitch += PITCH_SPEED;
+      if (pitch > MAX_PITCH) {
+        pitch = MAX_PITCH;
+      }
+    }
+
     updatePlayer(timeElapsed);
     updateProjectiles(timeElapsed);
 }
@@ -967,7 +988,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     // If set to 2, a texture will repeat 4 times (because 2x2) inside itself.
     int textureRepeat = 2;
 
-    for (; screenY<displayHeight; screenY++)
+    for (; screenY<displayHeight-pitch; screenY++)
     {
       float ratio= (eyeHeight) /((float)screenY-centerPlane);
       float diagonalDistance = (float)viewDist * (float)ratio;
@@ -1000,7 +1021,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       }
       int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
       int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
-      int dstPixel = screenX + screenY * displayWidth;
+      int dstPixel = screenX + (screenY+pitch) * displayWidth;
       int srcPixel = textureY * bitmap.getWidth() + textureX;
       bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
                      srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
@@ -1036,7 +1057,6 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
     return;
   }
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
-
   for (int i=0; i<(int)rayHits.size(); i++) {
     RayHit rayHit = rayHits[i];
       // Only draw above furthest wall
@@ -1066,10 +1086,92 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
                                                      player.z);
 
     int screenX = rayHit.strip * stripWidth;
-    int screenY = (displayHeight - wallScreenHeight)/2 + playerScreenZ;
+    int screenY = (displayHeight - wallScreenHeight)/2 + playerScreenZ + pitch;
     if (screenY >= displayHeight) {
       screenY = displayHeight-1;
     }
+    float eyeHeight = TILE_SIZE / 2 + player.z;
+    float highestCeilingTop = highestCeilingLevel*TILE_SIZE;
+
+    // Player can't see above the highest ceiling
+    if (eyeHeight>=highestCeilingTop) {
+      return;
+    }
+
+    // Draw skybox first
+    for (;screenY>=0;screenY--)
+    {
+      int dstPixel = screenX + (screenY) * displayWidth;
+      if (dstPixel >= displayWidth*displayHeight) {
+        continue;
+      }
+
+      const int PIXEL_LENGTH = SKYBOX_WIDTH * SKYBOX_HEIGHT;
+      int skyboxY = (screenY / (displayHeight/2.0f) * SKYBOX_HEIGHT);
+      Uint32* pix2 = (Uint32*) skyboxSurface->pixels;
+      int skyboxX = (float)screenX / displayWidth * SKYBOX_WIDTH;
+      float rotation = player.rot;
+      int skyboxOffsetX = -((rotation/TWO_PI)*SKYBOX_WIDTH)*4;
+      skyboxX += skyboxOffsetX;
+      int offset = (skyboxX%SKYBOX_WIDTH +skyboxY*SKYBOX_WIDTH);
+      if (offset < 0) {
+        offset = 0;
+      }
+      if (offset >= PIXEL_LENGTH) {
+        offset = PIXEL_LENGTH - 1;
+      }
+      bool pixelOK = dstPixel >=0 && dstPixel < displayWidth * displayHeight;
+      if (!pixelOK) {
+        continue;
+      }
+      Uint32 pixel = pix2[ offset ];
+      switch (stripWidth) {
+        case 4:
+          screenPixels[dstPixel+3] = pixel;
+        case 3:
+          screenPixels[dstPixel+2] = pixel;
+        case 2:
+          screenPixels[dstPixel+1] = pixel;
+        default:
+          screenPixels[dstPixel] = pixel;
+          break;
+      }
+    }
+  }
+
+  for (int i=0; i<(int)rayHits.size(); i++) {
+    RayHit rayHit = rayHits[i];
+      // Only draw above furthest wall
+    if (!rayHit.wallType) {
+      continue;
+    }
+
+    // Ignore doors
+    if (Raycaster::isDoor(rayHit.wallType)) {
+      continue;
+    }
+
+    // Only draw above highest wall
+    if (rayHit.level!=highestCeilingLevel-1) {
+      int gridAbove = rayHit.level + 1;
+      if (gridAbove<raycaster3D.gridCount &&
+          raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, gridAbove)) {
+        continue;
+      }
+    }
+
+    int wallScreenHeight = Raycaster::stripScreenHeight(viewDist,
+                                                        rayHit.correctDistance,
+                                                        TILE_SIZE);
+    float playerScreenZ = Raycaster::stripScreenHeight(viewDist,
+                                                     rayHit.correctDistance,
+                                                     player.z);
+    int screenX = rayHit.strip * stripWidth;
+    float screenY = (displayHeight - wallScreenHeight)/2 + playerScreenZ;
+    if (screenY >= displayHeight) {
+      screenY = displayHeight-1;
+    }
+
     float eyeHeight = TILE_SIZE / 2 + player.z;
     float centerPlane = displayHeight / 2;
     float highestCeilingTop = highestCeilingLevel*TILE_SIZE;
@@ -1079,8 +1181,8 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
       return;
     }
 
-    // Draw Highest Ceiling
-    for (;screenY>=0;screenY--)
+    // Draw highest ceiling
+    for (;screenY>=0-pitch;screenY--)
     {
       float ceilingHeight = TILE_SIZE * highestCeilingLevel;
       float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
@@ -1104,13 +1206,13 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
       int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
       int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
       int tileType = outOfBounds ? 0 : g_ceilingmap[ tileY ][ tileX ];
-      int dstPixel = screenX + screenY * displayWidth;
+      int dstPixel = screenX + (screenY+pitch) * displayWidth;
       if (dstPixel >= displayWidth*displayHeight) {
         continue;
       }
 
       // Draw highest ceiling if it is not out of bounds and above the center
-      if (!outOfBounds && screenY<displayHeight/2 && tileType) {
+      if (!outOfBounds && tileType) {
         Bitmap& bitmap = floorCeilingBitmaps[tileType];
         Uint32* pix = (Uint32*)bitmap.getPixels();
         if (!pix) {
@@ -1129,37 +1231,9 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
             break;
         }
       }
-      // Otherwise draw Skybox Pixels
-      else {
-        const int PIXEL_LENGTH = SKYBOX_WIDTH * SKYBOX_HEIGHT;
-        int skyboxY = (screenY / (displayHeight/2.0f) * SKYBOX_HEIGHT);
-        Uint32* pix2 = (Uint32*) skyboxSurface->pixels;
-        int skyboxX = (float)screenX / displayWidth * SKYBOX_WIDTH;
-        float rotation = player.rot;
-        int skyboxOffsetX = -((rotation/TWO_PI)*SKYBOX_WIDTH)*4;
-        skyboxX += skyboxOffsetX;
-        int offset = (skyboxX%SKYBOX_WIDTH +skyboxY*SKYBOX_WIDTH);
-        if (offset < 0) {
-          offset = 0;
-        }
-        if (offset >= PIXEL_LENGTH) {
-          offset = PIXEL_LENGTH - 1;
-        }
-        Uint32 pixel = pix2[ offset ];
-        switch (stripWidth) {
-          case 4:
-            screenPixels[dstPixel+3] = pixel;
-          case 3:
-            screenPixels[dstPixel+2] = pixel;
-          case 2:
-            screenPixels[dstPixel+1] = pixel;
-          default:
-            screenPixels[dstPixel] = pixel;
-            break;
-        }
-      }
     }
   }
+
 }
 
 void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
@@ -1174,8 +1248,8 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
     wallBottom -= wallScreenHeight*(rayHit.level-1) ;
   }
   bool wasInWall = false;
-  const int highestPoint = std::max( 0, wallBottom);
-  for (;screenY>=highestPoint;screenY--)
+//  const int highestPoint = std::max( (int)(0-pitch), (int)(wallBottom-pitch)) ;
+  for (;screenY>=0-pitch;screenY--)
   {
     float ceilingHeight = TILE_SIZE * (rayHit.level);
     float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
@@ -1222,7 +1296,7 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
     int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
     int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
     Uint32* screenPixels = (Uint32*) screenSurface->pixels;
-    int dstPixel = screenX + screenY * displayWidth;
+    int dstPixel = screenX + (screenY+pitch) * displayWidth;
     int srcPixel = textureY * bitmap.getWidth() + textureX;
     bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
                    srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
@@ -1251,14 +1325,14 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   int screenX = rayHit.strip * stripWidth;
-  float screenY = (displayHeight-wallScreenHeight)/2 + playerScreenZ;
+  float screenY = displayHeight/2; //(displayHeight-wallScreenHeight)/2 + playerScreenZ;
   if (screenY >= displayHeight) {
     screenY = displayHeight;
   }
   int textureRepeat = 1;
   float centerPlane = displayHeight/2;
   bool wasInWall = false;
-  for (; screenY>=centerPlane; screenY--)
+  for (; screenY<displayHeight-pitch; screenY++)
   {
     float ratio= (eyeHeight - wallTop) /((float)screenY-centerPlane);
     float diagonalDistance = (float)viewDist * (float)ratio;
@@ -1300,7 +1374,7 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
     }
     int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
     int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
-    int dstPixel = screenX + screenY * displayWidth;
+    int dstPixel = screenX + (screenY+pitch) * displayWidth;
     int srcPixel = textureY * bitmap.getWidth() + textureX;
     bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
                    srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
@@ -1324,13 +1398,13 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 
 void Game::drawWorld(vector<RayHit>& rayHits)
 {
-  RayHitSorter rayHitSorter(&raycaster3D, TILE_SIZE/2+ + 5 + player.z);
+  RayHitSorter rayHitSorter(&raycaster3D, TILE_SIZE/2+player.z);
   // Sort so that we draw furthest stuff first
   std::sort(rayHits.begin(), rayHits.end(), rayHitSorter);
 
   drawSkyboxAndHighestCeiling(rayHits);
   drawFloor(rayHits);
-  drawFloor(rayHits);
+
   //-----------------------
   // Draw Walls and Sprites
   //-----------------------
@@ -1485,11 +1559,6 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                      &dstRect);
     }
   }
-
-//  int playerLevel = player.z / TILE_SIZE;
-//  if (playerLevel >= 1) {
-//    drawWallTops( rayHits, 0 );
-//  }
 }
 
 void Game::drawWallStrip(RayHit& rayHit, SurfaceTexture& img,
@@ -1519,7 +1588,7 @@ void Game::drawWallStrip(RayHit& rayHit, SurfaceTexture& img,
   float swidth = 1;
   float sheight = TEXTURE_SIZE;
   float imgx = rayHit.strip * stripWidth;
-  float imgy = (displayHeight-wallScreenHeight) / 2 + playerScreenZ;;
+  float imgy = (displayHeight-wallScreenHeight) / 2 + playerScreenZ + pitch;
   float imgw = stripWidth;
   float imgh = wallScreenHeight;
 
@@ -1584,6 +1653,8 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
                                                        player.z);
     rc.y += playerScreenZ;
   }
+
+  rc.y += pitch;
 
   return rc;
 }
