@@ -984,7 +984,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       int y = (int)(xEnd*textureRepeat) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
-      if ( x < 0 || x < 0 || tileX > MAP_WIDTH || tileY > MAP_HEIGHT ) {
+      if ( x < 0 || y < 0 || tileX > MAP_WIDTH || tileY > MAP_HEIGHT ) {
         continue;
       }
       int floorTileType = g_floormap[ tileY ][ tileX ];
@@ -1002,18 +1002,12 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
       int dstPixel = screenX + screenY * displayWidth;
       int srcPixel = textureY * bitmap.getWidth() + textureX;
-      screenPixels[dstPixel] = pix[srcPixel];
+      bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                     srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                     dstPixel<displayWidth*displayHeight;
 
-      // Clamp the strip width so we don't write out of bounds of the
-      // screenPixels. Not sure if this is necessary.
-      int stripWidth2 = stripWidth;
-      //while (stripWidth2 * rayHit.strip >= displayWidth) {
-      //  stripWidth2--;
-      //}
-
-      if (srcPixel>=0 && srcPixel<bitmap.getWidth()*bitmap.getHeight()&&
-          dstPixel>=0 && dstPixel<displayWidth*displayHeight) {
-        switch (stripWidth2) {
+      if (pixelOK) {
+        switch (stripWidth) {
           case 4:
             screenPixels[dstPixel+3] = pix[srcPixel];
           case 3:
@@ -1080,6 +1074,11 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
     float centerPlane = displayHeight / 2;
     float highestCeilingTop = highestCeilingLevel*TILE_SIZE;
 
+    // Player can't see above the highest ceiling
+    if (eyeHeight>=highestCeilingTop) {
+      return;
+    }
+
     // Draw Highest Ceiling
     for (;screenY>=0;screenY--)
     {
@@ -1106,27 +1105,19 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
       int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
       int tileType = outOfBounds ? 0 : g_ceilingmap[ tileY ][ tileX ];
       int dstPixel = screenX + screenY * displayWidth;
-      int srcPixel = textureY * TEXTURE_SIZE + textureX;
-
-      if (dstPixel > displayWidth*displayHeight) {
+      if (dstPixel >= displayWidth*displayHeight) {
         continue;
       }
 
-      // Clamp the strip width so we don't write out of bounds of  the
-      // screenPixels. Not sure if this is necessary.
-      int stripWidth2 = stripWidth;
-      //while (stripWidth2 * rayHit.strip >= displayWidth) {
-      //  stripWidth2--;
-      //}
-
-      if (!outOfBounds && screenY<displayHeight/2 && tileType &&
-          eyeHeight<highestCeilingTop && dstPixel<displayWidth*displayHeight) {
+      // Draw highest ceiling if it is not out of bounds and above the center
+      if (!outOfBounds && screenY<displayHeight/2 && tileType) {
         Bitmap& bitmap = floorCeilingBitmaps[tileType];
         Uint32* pix = (Uint32*)bitmap.getPixels();
         if (!pix) {
           continue;
         }
-        switch (stripWidth2) {
+        int srcPixel = textureY * TEXTURE_SIZE + textureX;
+        switch (stripWidth) {
           case 4:
             screenPixels[dstPixel+3] = pix[srcPixel];
           case 3:
@@ -1138,7 +1129,7 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
             break;
         }
       }
-      // Skybox Pixels
+      // Otherwise draw Skybox Pixels
       else {
         const int PIXEL_LENGTH = SKYBOX_WIDTH * SKYBOX_HEIGHT;
         int skyboxY = (screenY / (displayHeight/2.0f) * SKYBOX_HEIGHT);
@@ -1178,13 +1169,11 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
   float eyeHeight = TILE_SIZE/2 + player.z;
   float centerPlane = displayHeight / 2;
   int screenY = displayHeight/2;
-  int groundWallX = rayHit.wallX;
-  int groundWallY = rayHit.wallY;
   int wallBottom = (displayHeight-wallScreenHeight)/2 + playerScreenZ;
   if (rayHit.level>0) {
     wallBottom -= wallScreenHeight*(rayHit.level-1) ;
   }
-  bool wasInCeilingTile = false;
+  bool wasInWall = false;
   const int highestPoint = std::max( 0, wallBottom);
   for (;screenY>=highestPoint;screenY--)
   {
@@ -1206,55 +1195,56 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
     int wallX = xEnd / TILE_SIZE;
     int wallY = yEnd / TILE_SIZE;
 
-    bool outOfBounds =xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE ||
-                      yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE;
-    bool sameTile = wallX==groundWallX&&wallY==groundWallY;
-
-    int tileType = 0;
-    if (!outOfBounds) {
-      if (sameTile) {
-        tileType = rayHit.wallType;
+    bool wallTextureExists = rayHit.wallType < (int)floorCeilingBitmaps.size();
+    bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
+                       y>MAP_HEIGHT*TILE_SIZE;
+    bool sameWall = wallX==rayHit.wallX && wallY==rayHit.wallY;
+    if (outOfBounds || !wallTextureExists || !sameWall) {
+      if (wasInWall) {
+        return;
       }
-      else {
-        if (wasInCeilingTile) {
-          tileType = rayHit.wallType;
-          return;
-        }
+      continue;
+    }
+    int wallType = raycaster3D.cellAt(wallX,wallY,rayHit.level);
+    if ( !wallType ) {
+      if (wasInWall) {
+        return;
       }
+      continue;
     }
 
-    if (tileType) {
-      wasInCeilingTile = true;
-      Bitmap& bitmap = floorCeilingBitmaps[ rayHit.wallType ];
-      Uint32* pix = (Uint32*)bitmap.getPixels();
-      if (!pix) {
-        continue;
+    Bitmap& bitmap = floorCeilingBitmaps[ rayHit.wallType ];
+    Uint32* pix = (Uint32*)bitmap.getPixels();
+    if (!pix) {
+      continue;
+    }
+
+    int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+    int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
+    Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+    int dstPixel = screenX + screenY * displayWidth;
+    int srcPixel = textureY * bitmap.getWidth() + textureX;
+    bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                   srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                   dstPixel<displayWidth*displayHeight;
+    if (pixelOK) {
+      wasInWall = true;
+      switch (stripWidth) {
+        case 4:
+          screenPixels[dstPixel+3] = pix[srcPixel];
+        case 3:
+          screenPixels[dstPixel+2] = pix[srcPixel];
+        case 2:
+          screenPixels[dstPixel+1] = pix[srcPixel];
+        default:
+          screenPixels[dstPixel] = pix[srcPixel];
+          break;
       }
-      int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
-      int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
-      Uint32* screenPixels = (Uint32*) screenSurface->pixels;
-      int dstPixel = screenX + screenY * displayWidth;
-      int srcPixel = textureY * bitmap.getWidth() + textureX;
-      if (srcPixel>=0 && srcPixel<bitmap.getWidth()*bitmap.getHeight()&&
-          dstPixel>=0 && dstPixel<displayWidth*displayHeight) {
-        switch (stripWidth) {
-          case 4:
-            screenPixels[dstPixel+3] = pix[srcPixel];
-          case 3:
-            screenPixels[dstPixel+2] = pix[srcPixel];
-          case 2:
-            screenPixels[dstPixel+1] = pix[srcPixel];
-          default:
-            screenPixels[dstPixel] = pix[srcPixel];
-            break;
-        }
-      } // switch
-    } // if (tileType)
-  } // for
+    }
+  }
 }
 
-void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,
-                       float playerScreenZ)
+void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 {
   float eyeHeight = TILE_SIZE/2 + player.z;
   float wallTop = (rayHit.level+1)*TILE_SIZE;
@@ -1267,7 +1257,7 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,
   }
   int textureRepeat = 1;
   float centerPlane = displayHeight/2;
-  bool wasInTile = false;
+  bool wasInWall = false;
   for (; screenY>=centerPlane; screenY--)
   {
     float ratio= (eyeHeight - wallTop) /((float)screenY-centerPlane);
@@ -1283,22 +1273,22 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,
     xEnd += player.x;
     int x = (int)(yEnd*textureRepeat) % TILE_SIZE;
     int y = (int)(xEnd*textureRepeat) % TILE_SIZE;
-    int tileX = xEnd / TILE_SIZE;
-    int tileY = yEnd / TILE_SIZE;
+    int wallX = xEnd / TILE_SIZE;
+    int wallY = yEnd / TILE_SIZE;
 
     bool wallTextureExists = rayHit.wallType < (int)floorCeilingBitmaps.size();
     bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
                        y>MAP_HEIGHT*TILE_SIZE;
-    bool sameTile = tileX==rayHit.wallX && tileY==rayHit.wallY;
-    if (outOfBounds || !wallTextureExists || !sameTile) {
-      if (wasInTile) {
+    bool sameWall = wallX==rayHit.wallX && wallY==rayHit.wallY;
+    if (outOfBounds || !wallTextureExists || !sameWall) {
+      if (wasInWall) {
         return;
       }
       continue;
     }
-    int floorTileType = raycaster3D.cellAt(tileX,tileY,rayHit.level);
+    int floorTileType = raycaster3D.cellAt(wallX,wallY,rayHit.level);
     if ( !floorTileType ) {
-      if (wasInTile) {
+      if (wasInWall) {
         return;
       }
       continue;
@@ -1312,17 +1302,12 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,
     int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
     int dstPixel = screenX + screenY * displayWidth;
     int srcPixel = textureY * bitmap.getWidth() + textureX;
-
-    // Clamp the strip width so we don't write out of bounds of the
-    // screenPixels. Not sure if this is necessary.
-    int stripWidth2 = stripWidth;
-    //while (stripWidth2 * rayHit.strip >= displayWidth) {
-    //  stripWidth2--;
-    //}
-    if (srcPixel>0 && srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
-        dstPixel>0 && dstPixel<displayWidth*displayHeight) {
-      wasInTile = true;
-      switch (stripWidth2) {
+    bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                   srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                   dstPixel<displayWidth*displayHeight;
+    if (pixelOK) {
+      wasInWall = true;
+      switch (stripWidth) {
         case 4:
           screenPixels[dstPixel+3] = pix[srcPixel];
         case 3:
@@ -1406,6 +1391,9 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       //
       // If you use the same texture for all sides of a block, you don't need
       // this check at all and can set cornerCheck to false.
+      //
+      // As for the actual cause I believe it's something to do with fmod()
+      // or floating point calculations during raycasting.
       //------------------------------------------------------------------------
       bool cornerCheck = true;
       bool isLeftEdge = sxi==0;
@@ -1651,6 +1639,10 @@ bool Game::isWallCell(int x, int y, int level) {
 }
 
 bool Game::playerInWall(float playerX, float playerY, float playerZ) {
+  if (playerX<0 || playerY<0 || playerX>MAP_WIDTH*TILE_SIZE ||
+      playerY>MAP_HEIGHT*TILE_SIZE) {
+    return true;
+  }
   float playerWidth = TILE_SIZE/5;
   int playerTileX = playerX / TILE_SIZE;
   int playerTileY = playerY / TILE_SIZE;
