@@ -6,6 +6,16 @@
 using namespace std;
 using namespace al::raycasting;
 
+#define USE_FMOD 1
+
+static float fmod2( float a, int b ) {
+  #if USE_FMOD == 1
+  return fmod(a,b);
+  #else
+  return (int)a % b; // faster but causes texture seams
+  #endif
+}
+
 bool RayHit::operator<(const RayHit& b) const {
   // If same level, draw furthest strip first
 //  if (level == b.level) {
@@ -238,7 +248,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       const float distX = trialAndErrorDistance;
       const float distY = trialAndErrorDistance;
       const float blockDist = distX*distX + distY*distY;
-      float texX = fmod(playerY, tileSize);
+      float texX = fmod2(playerY, tileSize);
       texX = right ? texX : tileSize - texX; // Facing left, flip image
 
       RayHit rayHit(playerX, playerY, rayAngle);
@@ -259,7 +269,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       const float distX = trialAndErrorDistance;
       const float distY = trialAndErrorDistance;
       const float blockDist = distX*distX + distY*distY;
-      float texX = fmod(playerY, tileSize);
+      float texX = fmod2(playerY, tileSize);
       texX = right ? texX : tileSize - texX; // Facing left, flip image
 
       RayHit rayHit(playerX, playerY, rayAngle);
@@ -378,7 +388,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         float distX = playerX - vx;
         float distY = playerY - vy;
         float blockDist = distX*distX + distY*distY;
-        float texX = fmod(vy, tileSize);
+        float texX = fmod2(vy, tileSize);
         texX = right ? texX : tileSize - texX; // Facing left, flip image
 
         RayHit rayHit(vx, vy, rayAngle);
@@ -395,7 +405,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
             float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
             float halfDistanceSquared = sqrt( halfDistance );
             rayHit.distance += halfDistanceSquared;
-            texX = fmod(vy+stepy/2, tileSize);
+            texX = fmod2(vy+stepy/2, tileSize);
           }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
         }
@@ -505,7 +515,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
           }
         }
 
-        float texX =  fmod(hx, tileSize);
+        float texX =  fmod2(hx, tileSize);
         texX = up ? texX : tileSize - texX; // Facing down, flip image
 
         RayHit rayHit(hx, hy, rayAngle);
@@ -522,7 +532,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
             float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
             float halfDistanceSquared = sqrt( halfDistance );
             rayHit.distance += halfDistanceSquared;
-            texX = fmod(hx+stepx/2, tileSize);
+            texX = fmod2(hx+stepx/2, tileSize);
           }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
         }
