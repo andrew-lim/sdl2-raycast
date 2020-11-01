@@ -147,6 +147,13 @@ public:
 
   int cellAt( int x, int y ) { return grids[0][x+y*gridWidth]; }
   int cellAt( int x, int y, int z ) { return grids[z][x+y*gridWidth]; }
+  int safeCellAt( int x, int y, int z, int fallback=0 ) {
+    const int offset = x+y*gridWidth;
+    if (z<0 || z>=gridCount || offset<0 || offset>=gridWidth*gridHeight) {
+      return fallback;
+    }
+    return grids[z][offset];
+  }
 
   // Reserve wall types above 1000 for door detection
   static bool isHorizontalDoor(int wallType) { return wallType > 1500; }

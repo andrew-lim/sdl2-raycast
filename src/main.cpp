@@ -213,11 +213,10 @@ void Game::addSpriteAt( int spriteid, int cellX, int cellY ) {
   int spriteWallX = (int)s.x / TILE_SIZE;
   int spriteWallY = (int)s.y / TILE_SIZE;
   int level = 0;
-  bool inWall = raycaster3D.cellAt(spriteWallX, spriteWallY, level);
+  bool inWall = raycaster3D.safeCellAt(spriteWallX, spriteWallY, level, 0);
   while (inWall) {
     level++;
-    inWall = level<raycaster3D.gridCount &&
-             raycaster3D.cellAt(spriteWallX, spriteWallY, level);
+    inWall = raycaster3D.safeCellAt(spriteWallX, spriteWallY, level, 0);
     if (!inWall) {
       break;
     }
@@ -1071,9 +1070,7 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
 
     // Only draw above highest wall
     if (rayHit.level!=highestCeilingLevel-1) {
-      int gridAbove = rayHit.level + 1;
-      if (gridAbove<raycaster3D.gridCount &&
-          raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, gridAbove)) {
+      if (raycaster3D.safeCellAt(rayHit.wallX, rayHit.wallY, rayHit.level+1)) {
         continue;
       }
     }
@@ -1153,9 +1150,7 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
 
     // Only draw above highest wall
     if (rayHit.level!=highestCeilingLevel-1) {
-      int gridAbove = rayHit.level + 1;
-      if (gridAbove<raycaster3D.gridCount &&
-          raycaster3D.cellAt(rayHit.wallX, rayHit.wallY, gridAbove)) {
+      if (raycaster3D.safeCellAt(rayHit.wallX, rayHit.wallY, rayHit.level+1)) {
         continue;
       }
     }
@@ -1243,7 +1238,7 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
   float eyeHeight = TILE_SIZE/2 + player.z;
   float centerPlane = displayHeight / 2;
   bool wasInWall = false;
-  for (int screenY=displayHeight/2; screenY>=0-pitch; screenY--)
+  for (int screenY=centerPlane; screenY>=0-pitch; screenY--)
   {
     float ceilingHeight = TILE_SIZE * (rayHit.level);
     float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
@@ -1411,8 +1406,9 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                                            rayHit.level-1);
         wallAboveWall = wallBelow && !Raycaster::isDoor(wallBelow);
       }
-      wallBelowWall= rayHit.level+1 < highestCeilingLevel &&
-                   raycaster3D.cellAt(rayHit.wallX,rayHit.wallY,rayHit.level+1);
+      wallBelowWall= raycaster3D.safeCellAt(rayHit.wallX,rayHit.wallY,
+                                            rayHit.level+1);
+
 
       int sxi = (int) sx;
       SurfaceTexture* img = rayHit.horizontal ? &wallsImageDark : &wallsImage;
@@ -1452,22 +1448,10 @@ void Game::drawWorld(vector<RayHit>& rayHits)
         const int wallX = rayHit.wallX;
         const int wallY = rayHit.wallY;
         const int level = rayHit.level;
-        int rightWall = 0;
-        int leftWall = 0;
-        int bottomWall = 0;
-        int topWall = 0;
-        if(rayHit.wallX+1<MAP_WIDTH) {
-          rightWall = raycaster3D.cellAt(wallX+1, wallY, level);
-        }
-        if(rayHit.wallX-1>=0) {
-          leftWall = raycaster3D.cellAt(wallX-1, wallY, level);
-        }
-        if (rayHit.wallY+1<MAP_HEIGHT) {
-          bottomWall = raycaster3D.cellAt(wallX, wallY+1, level);
-        }
-        if (rayHit.wallY-1>=0) {
-          topWall = raycaster3D.cellAt(wallX, wallY-1, level);
-        }
+        int rightWall = raycaster3D.safeCellAt(wallX+1, wallY, level);
+        int leftWall = raycaster3D.safeCellAt(wallX-1, wallY, level);
+        int bottomWall = raycaster3D.safeCellAt(wallX, wallY+1, level);
+        int topWall = raycaster3D.safeCellAt(wallX, wallY-1, level);
         if (isRightEdge) {
           if (rayHit.horizontal && rayHit.up && !rayHit.right && bottomWall) {
             img = &wallsImage;
@@ -1861,37 +1845,29 @@ void Game::toggleDoorPressed()
   const int wallX = player.x / TILE_SIZE;
   const int wallY = player.y / TILE_SIZE;
   const int level = 0;
-  int rightWall = 0;
-  int leftWall = 0;
-  int bottomWall = 0;
-  int topWall = 0;
-  if(wallX+1<MAP_WIDTH) {
-    rightWall = raycaster3D.cellAt(wallX+1, wallY, level);
-    if (Raycaster::isDoor(rightWall)) {
-      printf("Opening right door\n");
-      toggleDoor(wallX+1, wallY);
-    }
+  int rightWall = raycaster3D.safeCellAt(wallX+1, wallY, level);
+  if (Raycaster::isDoor(rightWall)) {
+    printf("Opening east door\n");
+    toggleDoor(wallX+1, wallY);
+    return;
   }
-  if(wallX-1>=0) {
-    leftWall = raycaster3D.cellAt(wallX-1, wallY, level);
-    if (Raycaster::isDoor(leftWall)) {
-      printf("Opening left door\n");
-      toggleDoor(wallX-1, wallY);
-    }
+  int leftWall = raycaster3D.safeCellAt(wallX-1, wallY, level);
+  if (Raycaster::isDoor(leftWall)) {
+    printf("Opening west door\n");
+    toggleDoor(wallX-1, wallY);
+    return;
   }
-  if (wallY+1<MAP_HEIGHT) {
-    bottomWall = raycaster3D.cellAt(wallX, wallY+1, level);
-    if (Raycaster::isDoor(bottomWall)) {
-      printf("Opening bottom door\n");
-      toggleDoor(wallX, wallY+1);
-    }
+  int bottomWall = raycaster3D.safeCellAt(wallX, wallY+1, level);
+  if (Raycaster::isDoor(bottomWall)) {
+    printf("Opening south door\n");
+    toggleDoor(wallX, wallY+1);
+    return;
   }
-  if (wallY-1>=0) {
-    topWall = raycaster3D.cellAt(wallX, wallY-1, level);
-    if (Raycaster::isDoor(topWall)) {
-      printf("Opening top door\n");
-      toggleDoor(wallX, wallY-1);
-    }
+  int topWall = raycaster3D.safeCellAt(wallX, wallY-1, level);
+  if (Raycaster::isDoor(topWall)) {
+    printf("Opening north door\n");
+    toggleDoor(wallX, wallY-1);
+    return;
   }
 }
 
