@@ -653,18 +653,30 @@ void Game::update(float timeElapsed) {
 
     float timeBasedFactor = timeElapsed / UPDATE_INTERVAL;
     static const float MAX_PITCH = displayHeight/2;
-    static const float PITCH_SPEED = 10 * timeBasedFactor;
+    const int PITCH_SPEED = 10 * timeBasedFactor;
 
-    if (keys[SDLK_PAGEDOWN] || (!keys[SDLK_PAGEUP]&&pitch>0)) {
+    if (keys[SDLK_PAGEDOWN]) {
       pitch -= PITCH_SPEED;
       if (pitch < -MAX_PITCH) {
         pitch = -MAX_PITCH;
       }
     }
-    else if (keys[SDLK_PAGEUP] || (!keys[SDLK_PAGEDOWN]&&pitch<0)) {
+    else if (keys[SDLK_PAGEUP]) {
       pitch += PITCH_SPEED;
       if (pitch > MAX_PITCH) {
         pitch = MAX_PITCH;
+      }
+    }
+    else if (pitch<0) {
+      pitch += PITCH_SPEED;
+      if (pitch > 0) {
+        pitch = 0;
+      }
+    }
+    else if (pitch>0) {
+      pitch -= PITCH_SPEED;
+      if (pitch < 0) {
+        pitch = 0;
       }
     }
 
