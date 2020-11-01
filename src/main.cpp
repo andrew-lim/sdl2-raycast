@@ -148,7 +148,8 @@ public:
     bool playerInWall(float playerX, float playerY, float playerZ);
     SDL_Rect findSpriteScreenPosition( Sprite& sprite );
     void addSpriteAt( int spriteid, int cellX, int cellY );
-    void addProjectile(int textureid, int x, int y, int size, float rotation);
+    void addProjectile(int textureid, int x, int y, int z, int size,
+                       float rotation);
     float sine(float f);
     float cosine(float f);
     void toggleDoorPressed();
@@ -222,11 +223,14 @@ void Game::addSpriteAt( int spriteid, int cellX, int cellY ) {
     }
   }
   s.level = level;
+  s.z = level * TILE_SIZE;
 
   sprites.push_back(s);
 }
 
-void Game::addProjectile(int textureid, int x, int y, int size, float rotation){
+void Game::addProjectile(int textureid, int x, int y, int z, int size,
+                         float rotation)
+{
   Sprite s;
   s.x = x;
   s.y = y;
@@ -234,6 +238,7 @@ void Game::addProjectile(int textureid, int x, int y, int size, float rotation){
   s.w = size;
   s.h = size;
   s.textureID = textureid;
+  s.z = z;
   projectilesQueue.push( s );
 }
 
@@ -826,6 +831,7 @@ void Game::updateProjectiles(float timeElapsed) {
       if (isWallCell(wallX, wallY)) {
         if (!projectile.cleanup) {
           addProjectile(SpriteTypeProjectileSplash, projectile.x, projectile.y,
+                        projectile.z,
                         TILE_SIZE, projectile.rot);
           Mix_PlayChannel( -1, projectileExplodeSound, 0 );
         }
@@ -858,7 +864,8 @@ void Game::updateProjectiles(float timeElapsed) {
             if (!projectile.cleanup) {
               projectile.cleanup = true;
               addProjectile(SpriteTypeProjectileSplash, projectile.x,
-                            projectile.y, TILE_SIZE, projectile.rot);
+                            projectile.y, projectile.z, TILE_SIZE,
+                            projectile.rot);
               Mix_PlayChannel( -1, projectileExplodeSound, 0 );
             }
           }
@@ -1603,9 +1610,16 @@ SDL_Rect Game::findSpriteScreenPosition( Sprite& sprite )
   rc.y = (displayHeight - spriteScreenWidth)/2.0f;
   rc.w = spriteScreenWidth;
   rc.h = spriteScreenWidth;
-  rc.y -= sprite.level * spriteScreenWidth;
 
-  // Playing not on the ground
+  // Sprite not on the ground
+  if (sprite.z) {
+    float spriteScreenZ = Raycaster::stripScreenHeight(viewDist,
+                                                       spriteDistance,
+                                                       sprite.z);
+    rc.y -= spriteScreenZ;
+  }
+
+  // Player not on the ground
   if (player.z) {
     float playerScreenZ = Raycaster::stripScreenHeight(viewDist,
                                                        spriteDistance,
@@ -1822,8 +1836,8 @@ void Game::onKeyUp( SDL_Event* evt ) {
       }
       case SDLK_SPACE: {
         Mix_PlayChannel( -1, projectileFireSound, 0 );
-        addProjectile(SpriteTypeProjectile, player.x, player.y, TILE_SIZE,
-                      player.rot);
+        addProjectile(SpriteTypeProjectile, player.x, player.y, player.z,
+                      TILE_SIZE, player.rot);
         break;
       }
     }
