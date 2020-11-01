@@ -1242,14 +1242,8 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
   int screenX = rayHit.strip * stripWidth;
   float eyeHeight = TILE_SIZE/2 + player.z;
   float centerPlane = displayHeight / 2;
-  int screenY = displayHeight/2;
-  int wallBottom = (displayHeight-wallScreenHeight)/2 + playerScreenZ;
-  if (rayHit.level>0) {
-    wallBottom -= wallScreenHeight*(rayHit.level-1) ;
-  }
   bool wasInWall = false;
-//  const int highestPoint = std::max( (int)(0-pitch), (int)(wallBottom-pitch)) ;
-  for (;screenY>=0-pitch;screenY--)
+  for (int screenY=displayHeight/2; screenY>=0-pitch; screenY--)
   {
     float ceilingHeight = TILE_SIZE * (rayHit.level);
     float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
@@ -1273,26 +1267,18 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
     bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
                        y>MAP_HEIGHT*TILE_SIZE;
     bool sameWall = wallX==rayHit.wallX && wallY==rayHit.wallY;
-    if (outOfBounds || !wallTextureExists || !sameWall) {
+    if (outOfBounds || !wallTextureExists || !sameWall ||
+        !raycaster3D.cellAt(wallX,wallY,rayHit.level)) {
       if (wasInWall) {
         return;
       }
       continue;
     }
-    int wallType = raycaster3D.cellAt(wallX,wallY,rayHit.level);
-    if ( !wallType ) {
-      if (wasInWall) {
-        return;
-      }
-      continue;
-    }
-
     Bitmap& bitmap = floorCeilingBitmaps[ rayHit.wallType ];
     Uint32* pix = (Uint32*)bitmap.getPixels();
     if (!pix) {
       continue;
     }
-
     int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
     int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
     Uint32* screenPixels = (Uint32*) screenSurface->pixels;
@@ -1320,19 +1306,14 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
 
 void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 {
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   float eyeHeight = TILE_SIZE/2 + player.z;
   float wallTop = (rayHit.level+1)*TILE_SIZE;
-
-  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
-  int screenX = rayHit.strip * stripWidth;
-  float screenY = displayHeight/2; //(displayHeight-wallScreenHeight)/2 + playerScreenZ;
-  if (screenY >= displayHeight) {
-    screenY = displayHeight;
-  }
-  int textureRepeat = 1;
   float centerPlane = displayHeight/2;
+  int textureRepeat = 1;
   bool wasInWall = false;
-  for (; screenY<displayHeight-pitch; screenY++)
+  int screenX = rayHit.strip * stripWidth;
+  for (int screenY=centerPlane; screenY<displayHeight-pitch; screenY++)
   {
     float ratio= (eyeHeight - wallTop) /((float)screenY-centerPlane);
     float diagonalDistance = (float)viewDist * (float)ratio;
@@ -1354,14 +1335,8 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
     bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
                        y>MAP_HEIGHT*TILE_SIZE;
     bool sameWall = wallX==rayHit.wallX && wallY==rayHit.wallY;
-    if (outOfBounds || !wallTextureExists || !sameWall) {
-      if (wasInWall) {
-        return;
-      }
-      continue;
-    }
-    int floorTileType = raycaster3D.cellAt(wallX,wallY,rayHit.level);
-    if ( !floorTileType ) {
+    if (outOfBounds || !wallTextureExists || !sameWall ||
+        !raycaster3D.cellAt(wallX,wallY,rayHit.level)) {
       if (wasInWall) {
         return;
       }
