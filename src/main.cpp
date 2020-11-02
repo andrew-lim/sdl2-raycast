@@ -829,18 +829,22 @@ void Game::updateProjectiles(float timeElapsed) {
     }
     float newX = projectile.x +  cosine(projectile.rot) * moveStep;
     float newY = projectile.y + -sine(projectile.rot) * moveStep;
+    float newZ = projectile.z;
     int wallX = (int)newX / TILE_SIZE;
     int wallY = (int)newY / TILE_SIZE;
+
+    // add a bit of height to the Z because projectile is floating
+    int wallZ = (int)(newZ+TILE_SIZE/4) / TILE_SIZE;
 
     bool wallHit = false;
     bool outOfBounds = false;
     bool hitOtherSprite = false;
-    if (isWallCell(wallX, wallY)) {
+    if (isWallCell(wallX, wallY, wallZ)) {
       newX = projectile.x +  cosine(projectile.rot) * moveStep/4;
       newY = projectile.y + -sine(projectile.rot) * moveStep/4;
       wallX = newX / TILE_SIZE;
       wallY = newY / TILE_SIZE;
-      if (isWallCell(wallX, wallY)) {
+      if (isWallCell(wallX, wallY, wallZ)) {
         if (!projectile.cleanup) {
           addProjectile(SpriteTypeProjectileSplash, projectile.x, projectile.y,
                         projectile.z,
@@ -1683,15 +1687,17 @@ bool Game::isWallCell(int x, int y, int level) {
   if (y < 0 || y >= MAP_HEIGHT || x < 0 || x >= MAP_WIDTH)
     return true;
 
-  if (Raycaster::isDoor(g_map[y][x])) {
-    if (doors[x + y * MAP_WIDTH]) {
-      return false;
+  if (level==0) {
+    if (Raycaster::isDoor(g_map[y][x])) {
+      if (doors[x + y * MAP_WIDTH]) {
+        return false;
+      }
+      return true;
     }
-    return true;
   }
 
   // return true if the map block is not 0, ie. if there is a blocking wall.
-  return raycaster3D.cellAt(x,y,level);
+  return raycaster3D.safeCellAt(x,y,level);
 }
 
 bool Game::playerInWall(float playerX, float playerY, float playerZ) {
