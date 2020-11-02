@@ -617,15 +617,14 @@ void Game::printHelp() {
   printf("Controls:\n"
          "Arrow keys or WASD to move\n"
          "R     - reset player and sprite positions\n"
-         "H     - Print this message again\n\n"
          "E     - Open Doors\n"
+         "LCtrl - Jump\n"
          "Space - Shoot\n"
          "M     - Toggle minimap\n"
          "F     - Toggle textured floors\n"
          "C     - Toggle skybox and ceilings\n"
          "G     - Toggle weapon visibility\n"
-         "LCtrl - Jump\n"
-         "2     - Toggle float\n"
+         "H     - Print this message again\n"
          "See config.ini for more settings.\n"
          "=====================================\n");
 }
@@ -1830,26 +1829,6 @@ void Game::onKeyUp( SDL_Event* evt ) {
       case SDLK_g: {
         drawWeaponOn = !drawWeaponOn;
         printf("drawWeaponOn = %s\n", drawWeaponOn?"true":"false");
-        break;
-      }
-      case SDLK_2: {
-        player.jumping = false;
-        player.heightJumped = 0;
-        if (player.z != FLOAT_HEIGHT) {
-          player.z = FLOAT_HEIGHT;
-        }
-        else {
-          player.z = 0;
-        }
-        printf("Floating: %s\n", player.z==FLOAT_HEIGHT ? "true":"false");
-        break;
-      }
-      case SDLK_3: {
-        player.z += TILE_SIZE/2;
-        break;
-      }
-      case SDLK_4: {
-        player.z -= TILE_SIZE/2;
         break;
       }
       case SDLK_SPACE: {
