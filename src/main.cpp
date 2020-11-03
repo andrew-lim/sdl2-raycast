@@ -617,14 +617,16 @@ void Game::printHelp() {
   printf("Controls:\n"
          "Arrow keys or WASD to move\n"
          "R     - reset player and sprite positions\n"
-         "E     - Open Doors\n"
-         "LCtrl - Jump\n"
-         "Space - Shoot\n"
-         "M     - Toggle minimap\n"
-         "F     - Toggle textured floors\n"
-         "C     - Toggle skybox and ceilings\n"
-         "G     - Toggle weapon visibility\n"
-         "H     - Print this message again\n"
+         "E      - Open Doors\n"
+         "LCtrl  - Jump\n"
+         "Space  - Shoot\n"
+         "PageUp - Look Up\n"
+         "PageDn - Look Down\n"
+         "M      - Toggle minimap\n"
+         "F      - Toggle textured floors\n"
+         "C      - Toggle skybox and ceilings\n"
+         "G      - Toggle weapon visibility\n"
+         "H      - Print this message again\n"
          "See config.ini for more settings.\n"
          "=====================================\n");
 }
@@ -749,18 +751,23 @@ void Game::updatePlayer(float elapsedTime) {
 
   // Movement blocked
   if (playerInWall(newX, newY, newZ)) {
-    // Try moving horizontally only
-    if (!playerInWall(newX, newY, player.z)) {
+    // Try moving east west only
+    if (!playerInWall(newX, player.y, player.z)) {
       player.x = newX;
+    }
+    // Try moving north south only
+    if (!playerInWall(player.x, newY, player.z)) {
       player.y = newY;
-      // Probably bumped our head on a ceiling, start falling
+    }
+    // Try moving vertically only
+    if (!playerInWall(player.x, player.y, newZ)) {
+      player.z = newZ;
+    }
+    // Probably bumped our head on a ceiling, start falling
+    else {
       if (player.jumping && player.heightJumped<HALF_JUMP_DISTANCE) {
         player.heightJumped = HALF_JUMP_DISTANCE;
       }
-    }
-    // Try moving vertically only
-    else if (!playerInWall(player.x, player.y, newZ)) {
-      player.z = newZ;
     }
   }
   // Movement okay!
