@@ -1227,8 +1227,8 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
                                                      player.z);
     int screenX = rayHit.strip * stripWidth;
     float screenY = (displayHeight - wallScreenHeight)/2 + playerScreenZ;
-    if (screenY >= displayHeight) {
-      screenY = displayHeight-1;
+    if (screenY >= displayHeight/2) {
+      screenY = displayHeight/2-1;
     }
 
     if (skipDrawnHighestCeilingStrips) {
