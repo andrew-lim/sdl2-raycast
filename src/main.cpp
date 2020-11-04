@@ -505,7 +505,7 @@ void Game::draw() {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE );
     SDL_RenderClear(renderer);
 
-//    memset(screenSurface->pixels, 0, sizeof(Uint32)*displayWidth*displayHeight );
+    //memset(screenSurface->pixels,0,sizeof(Uint32)*displayWidth*displayHeight);
 
     static vector<RayHit> allRayHits;
     allRayHits.clear();
@@ -1863,17 +1863,20 @@ void Game::onKeyUp( SDL_Event* evt ) {
       }
       case SDLK_2: {
         skipDrawnFloorStrips = !skipDrawnFloorStrips;
-        printf("skipDrawnFloorStrips = %s\n", skipDrawnFloorStrips?"true":"false");
+        printf("skipDrawnFloorStrips = %s\n",
+               skipDrawnFloorStrips?"true":"false");
         break;
       }
       case SDLK_3: {
         skipDrawnSkyboxStrips = !skipDrawnSkyboxStrips;
-        printf("skipDrawnSkyboxStrips = %s\n", skipDrawnSkyboxStrips?"true":"false");
+        printf("skipDrawnSkyboxStrips = %s\n",
+               skipDrawnSkyboxStrips?"true":"false");
         break;
       }
       case SDLK_4: {
         skipDrawnHighestCeilingStrips = !skipDrawnHighestCeilingStrips;
-        printf("skipDrawnHighestCeilingStrips = %s\n", skipDrawnHighestCeilingStrips?"true":"false");
+        printf("skipDrawnHighestCeilingStrips = %s\n",
+               skipDrawnHighestCeilingStrips?"true":"false");
         break;
       }
       case SDLK_h: {
