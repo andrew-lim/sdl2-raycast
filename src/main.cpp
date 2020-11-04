@@ -1929,25 +1929,25 @@ void Game::toggleDoorPressed()
   const int level = 0;
   int rightWall = raycaster3D.safeCellAt(wallX+1, wallY, level);
   if (Raycaster::isDoor(rightWall)) {
-    printf("Opening east door\n");
+    printf("Triggering east door\n");
     toggleDoor(wallX+1, wallY);
     return;
   }
   int leftWall = raycaster3D.safeCellAt(wallX-1, wallY, level);
   if (Raycaster::isDoor(leftWall)) {
-    printf("Opening west door\n");
+    printf("Triggering west door\n");
     toggleDoor(wallX-1, wallY);
     return;
   }
   int bottomWall = raycaster3D.safeCellAt(wallX, wallY+1, level);
   if (Raycaster::isDoor(bottomWall)) {
-    printf("Opening south door\n");
+    printf("Triggering south door\n");
     toggleDoor(wallX, wallY+1);
     return;
   }
   int topWall = raycaster3D.safeCellAt(wallX, wallY-1, level);
   if (Raycaster::isDoor(topWall)) {
-    printf("Opening north door\n");
+    printf("Triggering north door\n");
     toggleDoor(wallX, wallY-1);
     return;
   }

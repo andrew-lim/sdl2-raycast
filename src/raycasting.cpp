@@ -265,7 +265,8 @@ void Raycaster::raycast(vector<RayHit>& hits,
       rayHit.tileX = texX;
       hits.push_back( rayHit );
     }
-    if (level-1>=0 && grids[level-1][playerOffset] > 0) {
+    if (level-1>=0 && grids[level-1][playerOffset] > 0 &&
+        !isDoor(grids[level-1][playerOffset]) ) {
       const float distX = trialAndErrorDistance;
       const float distY = trialAndErrorDistance;
       const float blockDist = distX*distX + distY*distY;
