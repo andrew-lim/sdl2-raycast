@@ -176,6 +176,7 @@ private:
     vector<Sprite> sprites;
     std::queue<Sprite> projectilesQueue;
     bool drawMiniMapOn, drawTexturedFloorOn, drawCeilingOn, drawWallsOn;
+    bool skipDrawnFloorStrips;
     bool drawWeaponOn;
     Bitmap ceilingBitmap;
     SDL_Surface* skyboxSurface;
@@ -246,6 +247,7 @@ Game::Game()
 :frameSkip(0), running(0), window(NULL), renderer(NULL) {
   srand (time(NULL));
   drawMiniMapOn = true;
+  skipDrawnFloorStrips = true;
   drawTexturedFloorOn = true;
   drawCeilingOn = true;
   drawWeaponOn = true;
@@ -981,6 +983,9 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     return;
   }
 
+  vector<bool> stripsDrawn;
+  stripsDrawn.resize( rayCount + 1 );
+
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); ++i) {
     RayHit rayHit = rayHits[i];
@@ -998,6 +1003,15 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     // Ignore doors
     if (Raycaster::isDoor(rayHit.wallType)) {
       continue;
+    }
+
+    // Already drew this strip. This should work because we draw the farthest
+    // ground walls first.
+    if (skipDrawnFloorStrips) {
+      if (stripsDrawn[rayHit.strip]) {
+        continue;
+      }
+      stripsDrawn[rayHit.strip] = true;
     }
 
     int wallScreenHeight = Raycaster::stripScreenHeight(viewDist,
@@ -1813,6 +1827,11 @@ void Game::onKeyUp( SDL_Event* evt ) {
       case SDLK_1: {
         drawWallsOn = !drawWallsOn;
         printf("drawWallsOn = %s\n", drawWallsOn?"true":"false");
+        break;
+      }
+      case SDLK_2: {
+        skipDrawnFloorStrips = !skipDrawnFloorStrips;
+        printf("skipDrawnFloorStrips = %s\n", skipDrawnFloorStrips?"true":"false");
         break;
       }
       case SDLK_h: {
