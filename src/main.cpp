@@ -176,7 +176,8 @@ private:
     vector<Sprite> sprites;
     std::queue<Sprite> projectilesQueue;
     bool drawMiniMapOn, drawTexturedFloorOn, drawCeilingOn, drawWallsOn;
-    bool skipDrawnFloorStrips;
+    bool skipDrawnFloorStrips, skipDrawnSkyboxStrips;
+    bool skipDrawnHighestCeilingStrips;
     bool drawWeaponOn;
     Bitmap ceilingBitmap;
     SDL_Surface* skyboxSurface;
@@ -248,6 +249,8 @@ Game::Game()
   srand (time(NULL));
   drawMiniMapOn = true;
   skipDrawnFloorStrips = true;
+  skipDrawnSkyboxStrips = true;
+  skipDrawnHighestCeilingStrips = true;
   drawTexturedFloorOn = true;
   drawCeilingOn = true;
   drawWeaponOn = true;
@@ -1098,6 +1101,10 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
                  SDL_MapRGB(screenSurface->format,139, 185, 249));
     return;
   }
+
+  vector<int> drawnStrips;
+  drawnStrips.resize( rayCount + 1 );
+
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); i++) {
     RayHit rayHit = rayHits[i];
@@ -1136,6 +1143,17 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
     // Player can't see above the highest ceiling
     if (eyeHeight>=highestCeilingTop) {
       return;
+    }
+
+    if (skipDrawnSkyboxStrips) {
+      // Only draw this strip if we have not drawn it or we drew at a
+      // higher point previously
+      if (drawnStrips[rayHit.strip] < screenY) {
+        drawnStrips[rayHit.strip] = screenY;
+      }
+      else {
+        continue;
+      }
     }
 
     // Draw skybox first
@@ -1179,6 +1197,9 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
     }
   }
 
+  vector<int> drawnCeilingStrips;
+  drawnCeilingStrips.resize( rayCount + 1 );
+
   for (int i=0; i<(int)rayHits.size(); i++) {
     RayHit rayHit = rayHits[i];
       // Only draw above furthest wall
@@ -1208,6 +1229,17 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
     float screenY = (displayHeight - wallScreenHeight)/2 + playerScreenZ;
     if (screenY >= displayHeight) {
       screenY = displayHeight-1;
+    }
+
+    if (skipDrawnHighestCeilingStrips) {
+      // Only draw this strip if we have not drawn it or we drew at a
+      // higher point previously
+      if (drawnCeilingStrips[rayHit.strip] < screenY) {
+        drawnCeilingStrips[rayHit.strip] = screenY;
+      }
+      else {
+        continue;
+      }
     }
 
     float eyeHeight = TILE_SIZE / 2 + player.z;
@@ -1832,6 +1864,16 @@ void Game::onKeyUp( SDL_Event* evt ) {
       case SDLK_2: {
         skipDrawnFloorStrips = !skipDrawnFloorStrips;
         printf("skipDrawnFloorStrips = %s\n", skipDrawnFloorStrips?"true":"false");
+        break;
+      }
+      case SDLK_3: {
+        skipDrawnSkyboxStrips = !skipDrawnSkyboxStrips;
+        printf("skipDrawnSkyboxStrips = %s\n", skipDrawnSkyboxStrips?"true":"false");
+        break;
+      }
+      case SDLK_4: {
+        skipDrawnHighestCeilingStrips = !skipDrawnHighestCeilingStrips;
+        printf("skipDrawnHighestCeilingStrips = %s\n", skipDrawnHighestCeilingStrips?"true":"false");
         break;
       }
       case SDLK_h: {
