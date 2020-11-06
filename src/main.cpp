@@ -1033,17 +1033,16 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     // If set to 2, a texture will repeat 4 times (because 2x2) inside itself.
     int textureRepeat = 2;
 
+    const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
+
     for (; screenY<displayHeight-pitch; screenY++)
     {
-      float ratio= (eyeHeight) /((float)screenY-centerPlane);
-      float diagonalDistance = (float)viewDist * (float)ratio;
+      float ratio= (eyeHeight) /(screenY-centerPlane);
+      float straightDistance = viewDist * ratio;
+      float diagonalDistance = straightDistance * cosFactor;
 
-      // To correct for fisheye effect
-      float correctDistance = diagonalDistance *
-                               (1/cos(player.rot-rayHit.rayAngle));
-
-      float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
-      float yEnd = (correctDistance * -sine(rayHit.rayAngle));
+      float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+      float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
       yEnd += player.y;
       xEnd += player.x;
       int x = (int)(yEnd*textureRepeat) % TILE_SIZE;
@@ -1251,19 +1250,18 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
       return;
     }
 
+    const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
+
     // Draw highest ceiling
     for (;screenY>=0-pitch;screenY--)
     {
       float ceilingHeight = TILE_SIZE * highestCeilingLevel;
       float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
-      float diagonalDistance = (float)viewDist * (float)ratio;
+      float straightDistance = viewDist * ratio;
+      float diagonalDistance = straightDistance * cosFactor;
 
-      // To correct for fisheye effect
-      float correctDistance = diagonalDistance *
-                               (1/cos(player.rot-rayHit.rayAngle));
-
-      float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
-      float yEnd = (correctDistance * -sine(rayHit.rayAngle));
+      float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+      float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
       yEnd += player.y;
       xEnd += player.x;
 
@@ -1303,7 +1301,6 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
       }
     }
   }
-
 }
 
 void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
@@ -1313,18 +1310,16 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
   float eyeHeight = TILE_SIZE/2 + player.z;
   float centerPlane = displayHeight / 2;
   bool wasInWall = false;
+  const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
   for (int screenY=centerPlane; screenY>=0-pitch; screenY--)
   {
     float ceilingHeight = TILE_SIZE * (rayHit.level);
     float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
-    float diagonalDistance = (float)viewDist * (float)ratio;
+    float straightDistance = viewDist * ratio;
+    float diagonalDistance = straightDistance * cosFactor;
 
-    // To correct for fisheye effect
-    float correctDistance = diagonalDistance *
-                             (1/cos(player.rot-rayHit.rayAngle));
-
-    float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
-    float yEnd = (correctDistance * -sine(rayHit.rayAngle));
+    float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+    float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
     yEnd += player.y;
     xEnd += player.x;
 
@@ -1383,17 +1378,15 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
   int textureRepeat = 1;
   bool wasInWall = false;
   int screenX = rayHit.strip * stripWidth;
+  const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
   for (int screenY=centerPlane; screenY<displayHeight-pitch; screenY++)
   {
-    float ratio= (eyeHeight - wallTop) /((float)screenY-centerPlane);
-    float diagonalDistance = (float)viewDist * (float)ratio;
+    float ratio= (eyeHeight - wallTop) / (screenY-centerPlane);
+    float straightDistance = viewDist * ratio;
+    float diagonalDistance = straightDistance * cosFactor;
 
-    // To correct for fisheye effect
-    float correctDistance = diagonalDistance *
-                             (1/cos(player.rot-rayHit.rayAngle));
-
-    float xEnd = (correctDistance *  cosine(rayHit.rayAngle));
-    float yEnd = (correctDistance * -sine(rayHit.rayAngle));
+    float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+    float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
     yEnd += player.y;
     xEnd += player.x;
     int x = (int)(yEnd*textureRepeat) % TILE_SIZE;
