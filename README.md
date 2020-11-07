@@ -1,7 +1,7 @@
-# SDL2 Raycasting Demo
+# SDL2 Raycasting Engine
 
 This was originally a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast).
-But there are many more features now including floor/ceiling texture mapping, sprites and projectiles.
+But there are many more features now including vertical movement, floor/ceiling texture mapping, sprites and projectiles.
 
 You can see videos of it in action here:  
 [Video 1](https://www.youtube.com/watch?v=QlM9mbUYROM)  
