@@ -27,6 +27,7 @@ public:
     bool hidden;
     bool jumping;
     float heightJumped;
+    bool rayhit; // if ray has hit this sprite
     Sprite() :x(0), y(0), z(0), w(0), h(0), level(0), dir(0), rot(0), speed(0) {
       moveSpeed = 0;
       rotSpeed = 0;
@@ -38,6 +39,7 @@ public:
       hidden = false;
       jumping = false;
       heightJumped = 0;
+      rayhit = false;
     }
 } ;
 
@@ -54,9 +56,8 @@ struct RayHit {
   float rayAngle;  // angle used for calculation
   Sprite* sprite; // a sprite was hit
   int level; // ground level (0) or some other level.
-  bool furthest;
-  bool right;
-  bool up;
+  bool right; // if ray angle is in right unit circle quadrant
+  bool up; // if ray angle is in upper unit circle quadrant
   RayHit(int worldX=0, int worldY=0, float angle=0)
   : x(worldX), y(worldY), rayAngle(angle) {
     wallType = strip = wallX = wallY = tileX = distance = 0;
@@ -64,7 +65,6 @@ struct RayHit {
     horizontal = false;
     level = 0;
     sprite = 0;
-    furthest = false;
   }
   // Objects further away are drawn first using this in std::sort
   bool operator<(const RayHit& b) const;

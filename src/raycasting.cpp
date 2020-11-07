@@ -216,6 +216,8 @@ void Raycaster::raycast(vector<RayHit>& hits,
     return;
   }
 
+  // This should always be false. However if some wall strips that should be
+  // detected are not, setting this to true can help debug the problem.
   bool findAllWalls = false;
 
   float rayAngle = stripAngle + playerRot;
@@ -248,44 +250,42 @@ void Raycaster::raycast(vector<RayHit>& hits,
       const float distX = trialAndErrorDistance;
       const float distY = trialAndErrorDistance;
       const float blockDist = distX*distX + distY*distY;
-      float texX = fmod2(playerY, tileSize);
-      texX = right ? texX : tileSize - texX; // Facing left, flip image
-
-      RayHit rayHit(playerX, playerY, rayAngle);
-      rayHit.strip = stripIdx;
-      rayHit.wallType = grids[level+1][playerOffset];
-      rayHit.wallX = currentTileX;
-      rayHit.wallY = currentTileY;
-      rayHit.level = level+1;
       if (blockDist) {
+        float texX = fmod2(playerY, tileSize);
+        texX = right ? texX : tileSize - texX; // Facing left, flip image
+        RayHit rayHit(playerX, playerY, rayAngle);
+        rayHit.strip = stripIdx;
+        rayHit.wallType = grids[level+1][playerOffset];
+        rayHit.wallX = currentTileX;
+        rayHit.wallY = currentTileY;
+        rayHit.level = level+1;
         rayHit.distance = sqrt(blockDist);
         rayHit.correctDistance = rayHit.distance * cos(stripAngle);
+        rayHit.horizontal = false;
+        rayHit.tileX = texX;
+        hits.push_back( rayHit );
       }
-      rayHit.horizontal = false;
-      rayHit.tileX = texX;
-      hits.push_back( rayHit );
     }
     if (level-1>=0 && grids[level-1][playerOffset] > 0 &&
         !isDoor(grids[level-1][playerOffset]) ) {
       const float distX = trialAndErrorDistance;
       const float distY = trialAndErrorDistance;
       const float blockDist = distX*distX + distY*distY;
-      float texX = fmod2(playerY, tileSize);
-      texX = right ? texX : tileSize - texX; // Facing left, flip image
-
-      RayHit rayHit(playerX, playerY, rayAngle);
-      rayHit.strip = stripIdx;
-      rayHit.wallType = grids[level-1][playerOffset];
-      rayHit.wallX = currentTileX;
-      rayHit.wallY = currentTileY;
-      rayHit.level = level-1;
       if (blockDist) {
+        float texX = fmod2(playerY, tileSize);
+        texX = right ? texX : tileSize - texX; // Facing left, flip image
+        RayHit rayHit(playerX, playerY, rayAngle);
+        rayHit.strip = stripIdx;
+        rayHit.wallType = grids[level-1][playerOffset];
+        rayHit.wallX = currentTileX;
+        rayHit.wallY = currentTileY;
+        rayHit.level = level-1;
         rayHit.distance = sqrt(blockDist);
         rayHit.correctDistance = rayHit.distance * cos(stripAngle);
+        rayHit.horizontal = false;
+        rayHit.tileX = texX;
+        hits.push_back( rayHit );
       }
-      rayHit.horizontal = false;
-      rayHit.tileX = texX;
-      hits.push_back( rayHit );
     }
 
     //----------------------------------------
@@ -300,14 +300,15 @@ void Raycaster::raycast(vector<RayHit>& hits,
                                                         tileSize );
       for (size_t i=0; i<spritesFound.size(); ++i) {
         Sprite* sprite = spritesFound[ i ];
-        bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                      sprite) != spritesHit.end();
-        if (!addedAlready) {
+        if (!sprite->rayhit) {
           const float distX = playerX - sprite->x;
           const float distY = playerY - sprite->y;
           const float blockDist = distX*distX + distY*distY;
-          sprite->distance = sqrt(blockDist);
-          spritesHit.push_back(sprite);
+          if (blockDist) {
+            sprite->rayhit = true;
+            sprite->distance = sqrt(blockDist);
+            spritesHit.push_back(sprite);
+          }
         }
       }
     }
@@ -341,10 +342,9 @@ void Raycaster::raycast(vector<RayHit>& hits,
       stepy = -stepy;
     }
 
-    // TODO: We might not need this prevFindNextWall variable at all.
+    // TODO: We might not need this prevGaps variable at all.
     // Remove it and do more testing to see if nothing is affected.
-    bool prevFindNextWall = false;
-    int lastWallFoundIndex = -1;
+    bool prevGaps = false;
     while (vx>=0 && vx<gridWidth*tileSize && vy>=0 && vy<gridHeight*tileSize) {
       int wallY = floor(vy / tileSize);
       int wallX = floor(vx / tileSize);
@@ -358,9 +358,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
                                                           tileSize );
         for (size_t i=0; i<spritesFound.size(); ++i) {
           Sprite* sprite = spritesFound[ i ];
-          bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                        sprite) != spritesHit.end();
-          if (!addedAlready) {
+          if (!sprite->rayhit) {
             const float distX = playerX - sprite->x;
             const float distY = playerY - sprite->y;
             const float blockDist = distX*distX + distY*distY;
@@ -378,6 +376,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
             spriteRayHit.sprite = sprite;
             spriteRayHit.level = sprite->level;
             spriteRayHit.distance = sprite->distance;
+            sprite->rayhit = true;
             hits.push_back( spriteRayHit );
           }
         }
@@ -402,6 +401,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.right = right;
         if (blockDist) {
           rayHit.distance = sqrt(blockDist);
+          // If a door was hit, move ray halfway inside
           if (isVerticalDoor(grid[wallOffset])) {
             float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
             float halfDistanceSquared = sqrt( halfDistance );
@@ -409,30 +409,24 @@ void Raycaster::raycast(vector<RayHit>& hits,
             texX = fmod2(vy+stepy/2, tileSize);
           }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
-        }
-        rayHit.horizontal = false;
-        rayHit.tileX = texX;
-
-        bool gaps = needsNextWall(grids,playerZ,tileSize,gridWidth,wallX,wallY,
+          rayHit.horizontal = false;
+          rayHit.tileX = texX;
+          bool gaps=needsNextWall(grids,playerZ,tileSize,gridWidth,wallX,wallY,
                                   level);
-        // There is an empty space below this wall, or the wall before
-        if (gaps) {
-          prevFindNextWall = gaps; // for next wall check
+          // There is an empty space below this wall, or the wall before
+          if (gaps) {
+            prevGaps = gaps; // for next wall check
+          }
+          else if (!findAllWalls) {
+            verticalWallHit = rayHit;
+            verticalLineDistance = blockDist;
+            break;
+          }
+          hits.push_back( rayHit );
         }
-        else if (!findAllWalls) {
-          verticalWallHit = rayHit;
-          verticalLineDistance = blockDist;
-          break;
-        }
-        hits.push_back( rayHit );
-        lastWallFoundIndex = hits.size() - 1;
       }
-
       vx += stepx;
       vy += stepy;
-    }
-    if (lastWallFoundIndex != -1) {
-      hits[lastWallFoundIndex].furthest = true;
     }
 
     //--------------------------
@@ -462,8 +456,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       stepx = -stepx;
     }
 
-    prevFindNextWall = false;
-    lastWallFoundIndex = -1;
+    prevGaps = false;
     while (hx>=0 && hx<gridWidth*tileSize && hy>=0 && hy<gridHeight*tileSize) {
       int wallY = floor(hy / tileSize);
       int wallX = floor(hx / tileSize);
@@ -476,9 +469,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
                                                           tileSize );
         for (size_t i=0; i<spritesFound.size(); ++i) {
           Sprite* sprite = spritesFound[ i ];
-          bool addedAlready = std::find(spritesHit.begin(), spritesHit.end(),
-                                        sprite) != spritesHit.end();
-          if (!addedAlready) {
+          if (!sprite->rayhit) {
             const float distX = playerX - sprite->x;
             const float distY = playerY - sprite->y;
             const float blockDist = distX*distX + distY*distY;
@@ -496,6 +487,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
             spriteRayHit.sprite = sprite;
             spriteRayHit.level = sprite->level;
             spriteRayHit.distance = sprite->distance;
+            sprite->rayhit = true;
             hits.push_back( spriteRayHit );
           }
         }
@@ -511,7 +503,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         // If vertical distance is less than horizontal line distance, stop
         if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
           // Unless there was some space below previous wall
-          if (!prevFindNextWall) {
+          if (!prevGaps) {
             break;
           }
         }
@@ -529,6 +521,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
         rayHit.right = right;
         if (blockDist) {
           rayHit.distance = sqrt(blockDist);
+          // If a door was hit, move ray halfway inside
           if (isHorizontalDoor(grid[wallOffset])) {
             float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
             float halfDistanceSquared = sqrt( halfDistance );
@@ -536,39 +529,33 @@ void Raycaster::raycast(vector<RayHit>& hits,
             texX = fmod2(hx+stepx/2, tileSize);
           }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
-        }
-        rayHit.horizontal = true;
-        rayHit.tileX = texX;
-        horizontalLineDistance = blockDist;
-        hits.push_back( rayHit );
-        lastWallFoundIndex = hits.size() - 1;
+          rayHit.horizontal = true;
+          rayHit.tileX = texX;
+          horizontalLineDistance = blockDist;
+          hits.push_back( rayHit );
 
-        bool gaps = needsNextWall(grids,playerZ,tileSize,gridWidth,wallX,wallY,
+          bool gaps=needsNextWall(grids,playerZ,tileSize,gridWidth,wallX,wallY,
                                   level);
-        // There is an empty space below this wall, or the wall before
-        if (gaps) {
-          // Add the previous vertical line if any
-          if (verticalLineDistance) {
-            verticalWallHit.furthest = true;
-            hits.push_back(verticalWallHit);
-            verticalLineDistance = 0; // Make sure not to add it again
+          // There is an empty space below this wall, or the wall before
+          if (gaps) {
+            // Add the previous vertical line if any
+            if (verticalLineDistance) {
+              hits.push_back(verticalWallHit);
+              verticalLineDistance = 0; // Make sure not to add it again
+            }
+            prevGaps = gaps; // for next wall check
           }
-          prevFindNextWall = gaps; // for next wall check
-        }
-        else if (!findAllWalls) {
-          break;
+          else if (!findAllWalls) {
+            break;
+          }
         }
       }
       hx += stepx;
       hy += stepy;
     }
-    if (lastWallFoundIndex != -1) {
-      hits[lastWallFoundIndex].furthest = true;
-    }
 
     // If no horizontal line was found, but a vertical line was.
     if (!horizontalLineDistance && verticalLineDistance) {
-      verticalWallHit.furthest = true;
       hits.push_back(verticalWallHit);
     }
   }

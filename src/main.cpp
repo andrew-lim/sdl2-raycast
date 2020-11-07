@@ -1697,34 +1697,17 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
 {
   vector<Sprite*> spritesFound;
   rayHitsCount = 0;
+  for (int i=0; i<(int)sprites.size(); ++i) {
+    sprites[i].rayhit = false;
+  }
   for (int strip=0; strip<rayCount; strip++) {
     float screenX = (rayCount/2 - strip) * stripWidth;
     const float stripAngle = Raycaster::stripAngle(screenX, viewDist);
-
-    vector<RayHit> rayHitsFound;
-    raycaster3D.raycast(rayHitsFound, player.x, player.y, player.z, player.rot,
+    raycaster3D.raycast(rayHits, player.x, player.y, player.z, player.rot,
                         stripAngle, strip, &sprites);
-    for (size_t j=0; j<rayHitsFound.size(); ++j) {
-      RayHit rayHit = rayHitsFound[ j ];
-      if ( rayHit.distance ) {
-        // Wall found
-        if (rayHit.wallType) {
-          rayHits.push_back(rayHit);
-          rayHitsCount++;
-        }
-        // Sprite found
-        else if (rayHit.sprite) {
-          bool addedAlready = std::find(spritesFound.begin(),
-                                        spritesFound.end(),  rayHit.sprite) !=
-                                        spritesFound.end();
-          if (!addedAlready) {
-            spritesFound.push_back(rayHit.sprite);
-            rayHits.push_back(rayHit);
-          }
-        }
-      }
-    }
+
   }
+  rayHitsCount = rayHits.size();
 }
 
 bool Game::isWallCell(int x, int y, int level) {
