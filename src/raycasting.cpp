@@ -388,18 +388,17 @@ void Raycaster::raycast(vector<RayHit>& hits,
         float distX = playerX - vx;
         float distY = playerY - vy;
         float blockDist = distX*distX + distY*distY;
-        float texX = fmod2(vy, tileSize);
-        texX = right ? texX : tileSize - texX; // Facing left, flip image
-
-        RayHit rayHit(vx, vy, rayAngle);
-        rayHit.strip = stripIdx;
-        rayHit.wallType = grid[wallOffset];
-        rayHit.wallX = wallX;
-        rayHit.wallY = wallY;
-        rayHit.level = level;
-        rayHit.up = up;
-        rayHit.right = right;
         if (blockDist) {
+          float texX = fmod2(vy, tileSize);
+          texX = right ? texX : tileSize - texX; // Facing left, flip image
+          RayHit rayHit(vx, vy, rayAngle);
+          rayHit.strip = stripIdx;
+          rayHit.wallType = grid[wallOffset];
+          rayHit.wallX = wallX;
+          rayHit.wallY = wallY;
+          rayHit.level = level;
+          rayHit.up = up;
+          rayHit.right = right;
           rayHit.distance = sqrt(blockDist);
           // If a door was hit, move ray halfway inside
           if (isVerticalDoor(grid[wallOffset])) {
@@ -475,7 +474,6 @@ void Raycaster::raycast(vector<RayHit>& hits,
             const float blockDist = distX*distX + distY*distY;
             sprite->distance = sqrt(blockDist);
             spritesHit.push_back(sprite);
-
             RayHit spriteRayHit(hx, hy, rayAngle);
             spriteRayHit.strip = stripIdx;
             if (sprite->distance) {
@@ -495,7 +493,6 @@ void Raycaster::raycast(vector<RayHit>& hits,
 
       // Check if current cell is a wall
       if (grid[wallOffset]>0 && !isVerticalDoor(grid[wallOffset])) {
-
         const float distX = playerX - hx;
         const float distY = playerY - hy;
         const float blockDist = distX*distX + distY*distY;
@@ -508,18 +505,17 @@ void Raycaster::raycast(vector<RayHit>& hits,
           }
         }
 
-        float texX =  fmod2(hx, tileSize);
-        texX = up ? texX : tileSize - texX; // Facing down, flip image
-
-        RayHit rayHit(hx, hy, rayAngle);
-        rayHit.strip = stripIdx;
-        rayHit.wallType = grid[wallOffset];
-        rayHit.wallX = wallX;
-        rayHit.wallY = wallY;
-        rayHit.level = level;
-        rayHit.up = up;
-        rayHit.right = right;
         if (blockDist) {
+          float texX =  fmod2(hx, tileSize);
+          texX = up ? texX : tileSize - texX; // Facing down, flip image
+          RayHit rayHit(hx, hy, rayAngle);
+          rayHit.strip = stripIdx;
+          rayHit.wallType = grid[wallOffset];
+          rayHit.wallX = wallX;
+          rayHit.wallY = wallY;
+          rayHit.level = level;
+          rayHit.up = up;
+          rayHit.right = right;
           rayHit.distance = sqrt(blockDist);
           // If a door was hit, move ray halfway inside
           if (isHorizontalDoor(grid[wallOffset])) {
