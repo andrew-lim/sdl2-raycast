@@ -128,8 +128,6 @@ private:
     float fovRadians, viewDist;
     bool fullscreen;
     float pitch;
-
-    std::vector< std::vector<int> > grids;
     Raycaster raycaster3D;
     std::vector<int> ceilingGrid;
     std::vector<int> groundWalls;
@@ -241,8 +239,6 @@ void Game::reset()
   array2DToVector(g_map, raycaster3D.grids[0]);
   array2DToVector(g_map2, raycaster3D.grids[1]);
   array2DToVector(g_map3, raycaster3D.grids[2]);
-
-  grids = raycaster3D.grids;
 
   array2DToVector(g_ceilingmap, ceilingGrid);
 
