@@ -1744,23 +1744,30 @@ bool Game::playerInWall(float playerX, float playerY, float playerZ) {
     }
   }
 
+  // Feet
   if (raycaster3D.cellAt(playerTileX, playerTileY, playerTileFeet)) {
     if (Raycaster::isDoor(g_map[playerTileY][playerTileX])) {
       if (!doors[playerTileX + playerTileY * MAP_WIDTH]) {
         return true;
       }
-      return false;
     }
-    return true;
+    else {
+      return true;
+    }
   }
+
+  // Head
   if (raycaster3D.cellAt(playerTileX, playerTileY, playerTileHead)) {
-    if (Raycaster::isDoor(g_map[playerTileY][playerTileX])) {
-      if (!doors[playerTileX + playerTileY * MAP_WIDTH]) {
-        return true;
+    if ( playerTileHead == 0 ) {
+      if (Raycaster::isDoor(g_map[playerTileY][playerTileX])) {
+        if (!doors[playerTileX + playerTileY * MAP_WIDTH]) {
+          return true;
+        }
       }
-      return false;
     }
-    return true;
+    else {
+      return true;
+    }
   }
 
   return false;
