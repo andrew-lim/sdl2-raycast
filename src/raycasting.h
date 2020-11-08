@@ -66,8 +66,6 @@ struct RayHit {
     level = 0;
     sprite = 0;
   }
-  // Objects further away are drawn first using this in std::sort
-  bool operator<(const RayHit& b) const;
 };
 
 /**

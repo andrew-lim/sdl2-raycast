@@ -16,15 +16,6 @@ static float fmod2( float a, int b ) {
   #endif
 }
 
-bool RayHit::operator<(const RayHit& b) const {
-  // If same level, draw furthest strip first
-//  if (level == b.level) {
-    return distance > b.distance;
-//  }
-//  return level > b.level; // draw high levels first
-
-}
-
 bool RayHitSorter::operator()(const RayHit& a, const RayHit& b) const
 {
   // Workaround for ground floor door ceilings, always draw the higher
