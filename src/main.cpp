@@ -75,38 +75,6 @@ typedef enum SpriteType {
   SpriteTypeGates = 11
 } SpriteType;
 
-// sort using a custom function object
-struct RayHitSorter {
-  Raycaster* _raycaster;
-  float _eye;
-  RayHitSorter(Raycaster* raycaster, float eye=0)
-  : _raycaster(raycaster), _eye(eye)
-  {}
-  bool operator()(const RayHit& a, const RayHit& b) const
-  {
-    // Workaround for ground floor door ceilings, always draw the higher
-    // levels first, so the door is always drawn below the ceiling.
-    if ( _eye < TILE_SIZE ) {
-      if (a.level == b.level) {
-        return a.distance > b.distance;
-      }
-      return a.level > b.level;
-    }
-
-    // Otherwise sort by eye distance to wall bottom.
-    // Further walls drawn first.
-    float wallBottomA = a.level*TILE_SIZE;
-    float wallBottomB = b.level*TILE_SIZE;
-    float vDistanceToEyeA = _eye-wallBottomA;
-    float vDistanceToEyeB = _eye-wallBottomB;
-    float distanceToWallBaseA = vDistanceToEyeA*vDistanceToEyeA +
-                                a.distance*a.distance;
-    float distanceToWallBaseB = vDistanceToEyeB*vDistanceToEyeB +
-                                b.distance*b.distance;
-    return distanceToWallBaseA > distanceToWallBaseB;
-  }
-};
-
 
 class Game {
 public:
@@ -621,7 +589,7 @@ void Game::printHelp() {
   printf("=== https://github.com/andrew-lim ===\n");
   printf("Controls:\n"
          "Arrow keys or WASD to move\n"
-         "R     - reset player and sprite positions\n"
+         "R      - reset player/sprite positions\n"
          "E      - Open Doors\n"
          "LCtrl  - Jump\n"
          "Space  - Shoot\n"
@@ -1437,7 +1405,6 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 void Game::drawWorld(vector<RayHit>& rayHits)
 {
   RayHitSorter rayHitSorter(&raycaster3D, TILE_SIZE/2+player.z);
-  // Sort so that we draw furthest stuff first
   std::sort(rayHits.begin(), rayHits.end(), rayHitSorter);
 
   drawSkyboxAndHighestCeiling(rayHits);

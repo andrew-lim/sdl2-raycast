@@ -25,6 +25,30 @@ bool RayHit::operator<(const RayHit& b) const {
 
 }
 
+bool RayHitSorter::operator()(const RayHit& a, const RayHit& b) const
+{
+  // Workaround for ground floor door ceilings, always draw the higher
+  // levels first, so the door is always drawn below the ceiling.
+  if ( _eye < _raycaster->tileSize ) {
+    if (a.level == b.level) {
+      return a.distance > b.distance;
+    }
+    return a.level > b.level;
+  }
+
+  // Otherwise sort by eye distance to wall bottom.
+  // Further walls drawn first.
+  float wallBottomA = a.level*_raycaster->tileSize;
+  float wallBottomB = b.level*_raycaster->tileSize;
+  float vDistanceToEyeA = _eye-wallBottomA;
+  float vDistanceToEyeB = _eye-wallBottomB;
+  float distanceToWallBaseA = vDistanceToEyeA*vDistanceToEyeA +
+                              a.distance*a.distance;
+  float distanceToWallBaseB = vDistanceToEyeB*vDistanceToEyeB +
+                              b.distance*b.distance;
+  return distanceToWallBaseA > distanceToWallBaseB;
+}
+
 void Raycaster::createGrids( int gridWidth, int gridHeight, int gridCount,
                              int tileSize)
 {
@@ -190,7 +214,6 @@ bool Raycaster::needsNextWall(std::vector< std::vector<int> >& grids,
   }
   return false;
 }
-
 
 void Raycaster::raycast(std::vector<RayHit>& rayHits,
                         int playerX, int playerY, float playerZ,

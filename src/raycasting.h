@@ -70,13 +70,15 @@ struct RayHit {
   bool operator<(const RayHit& b) const;
 };
 
-/*
+/**
 Contains static utility functions for raycasting.
 
-A Raycaster instance  holds information for a 2D grid.
-The grid is stored as a single vector in row-major order.
-The offset is calculated using x + y * width.
-*/
+A Raycaster instance holds information for one or more 2D grids with the same
+dimensions. Each grid is stored as a single vector in row-major order.
+The element offset for each grid is calculated using x + y * width.
+
+If there are two or more grids, it is effectively a 3D grid.
+**/
 class Raycaster {
 public:
   std::vector< std::vector<int> > grids;
@@ -164,6 +166,21 @@ public:
     return isVerticalDoor(wallType) || isHorizontalDoor(wallType);
   }
 };
+
+/**
+Used to sort rayhits from furthest to nearest.
+raycaster - the Raycaster instance
+eye       - distance between player's eye and ground
+**/
+struct RayHitSorter {
+  Raycaster* _raycaster;
+  float _eye;
+  RayHitSorter(Raycaster* raycaster, float eye)
+  : _raycaster(raycaster), _eye(eye)
+  {}
+  bool operator()(const RayHit& a, const RayHit& b) const;
+};
+
 
 } // raycasting
 } // al
