@@ -18,25 +18,20 @@ static float fmod2( float a, int b ) {
 
 bool RayHitSorter::operator()(const RayHit& a, const RayHit& b) const
 {
-  // Workaround for ground floor door ceilings, always draw the higher
-  // levels first, so the door is always drawn below the ceiling.
-  if ( _eye < _raycaster->tileSize ) {
-    if (a.level == b.level) {
-      return a.distance > b.distance;
-    }
-    return a.level > b.level;
-  }
-
   // Otherwise sort by eye distance to wall bottom.
   // Further walls drawn first.
   float wallBottomA = a.level*_raycaster->tileSize;
   float wallBottomB = b.level*_raycaster->tileSize;
   float vDistanceToEyeA = _eye-wallBottomA;
   float vDistanceToEyeB = _eye-wallBottomB;
+
+  float distanceA = a.sortdistance ? a.sortdistance : a.distance;
+  float distanceB = b.sortdistance ? b.sortdistance : b.distance;
+
   float distanceToWallBaseA = vDistanceToEyeA*vDistanceToEyeA +
-                              a.distance*a.distance;
+                              distanceA*distanceA;
   float distanceToWallBaseB = vDistanceToEyeB*vDistanceToEyeB +
-                              b.distance*b.distance;
+                              distanceB*distanceB;
   return distanceToWallBaseA > distanceToWallBaseB;
 }
 
@@ -414,12 +409,25 @@ void Raycaster::raycast(vector<RayHit>& hits,
           rayHit.up = up;
           rayHit.right = right;
           rayHit.distance = sqrt(blockDist);
+          rayHit.sortdistance = rayHit.distance;
+          bool canAdd = true;
           // If a door was hit, move ray halfway inside
           if (isVerticalDoor(grid[wallOffset])) {
-            float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
-            float halfDistanceSquared = sqrt( halfDistance );
-            rayHit.distance += halfDistanceSquared;
-            texX = fmod2(vy+stepy/2, tileSize);
+            int newWallY = floor((vy+stepy/2) / tileSize);
+            int newWallX = floor((vx+stepx/2) / tileSize);
+            if (newWallY==wallY && newWallX==wallX) {
+              float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
+              float halfDistanceSquared = sqrt( halfDistance );
+              rayHit.distance += halfDistanceSquared;
+              texX = fmod2(vy+stepy/2, tileSize);
+
+              // Give doors slightly higher drawing priority to prevent the
+              // wall above drawing its bottom surface later than the door
+              rayHit.sortdistance -= 1;
+            }
+            else {
+              canAdd = false;
+            }
           }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
           rayHit.horizontal = false;
@@ -435,7 +443,9 @@ void Raycaster::raycast(vector<RayHit>& hits,
             verticalLineDistance = blockDist;
             break;
           }
-          hits.push_back( rayHit );
+          if (canAdd) {
+            hits.push_back( rayHit );
+          }
         }
       }
       vx += stepx;
@@ -531,18 +541,33 @@ void Raycaster::raycast(vector<RayHit>& hits,
           rayHit.up = up;
           rayHit.right = right;
           rayHit.distance = sqrt(blockDist);
+          rayHit.sortdistance = rayHit.distance;
+          bool canAdd = true;
           // If a door was hit, move ray halfway inside
           if (isHorizontalDoor(grid[wallOffset])) {
-            float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
-            float halfDistanceSquared = sqrt( halfDistance );
-            rayHit.distance += halfDistanceSquared;
-            texX = fmod2(hx+stepx/2, tileSize);
+            int newWallY = floor((hy+stepy/2) / tileSize);
+            int newWallX = floor((hx+stepx/2) / tileSize);
+            if (newWallY==wallY && newWallX==wallX) {
+              float halfDistance = stepx/2*stepx/2 + stepy/2*stepy/2;
+              float halfDistanceSquared = sqrt( halfDistance );
+              rayHit.distance += halfDistanceSquared;
+              texX = fmod2(hx+stepx/2, tileSize);
+
+              // Give doors slightly higher drawing priority to prevent the
+              // wall above drawing its bottom surface later than the door
+              rayHit.sortdistance -= 1;
+            }
+            else {
+              canAdd = false;
+            }
           }
           rayHit.correctDistance = rayHit.distance * cos(stripAngle);
           rayHit.horizontal = true;
           rayHit.tileX = texX;
           horizontalLineDistance = blockDist;
-          hits.push_back( rayHit );
+          if (canAdd) {
+            hits.push_back( rayHit );
+          }
 
           bool gaps=needsNextWall(grids,playerZ,tileSize,gridWidth,wallX,wallY,
                                   level);

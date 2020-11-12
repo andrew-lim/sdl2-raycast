@@ -58,6 +58,12 @@ struct RayHit {
   int level; // ground level (0) or some other level.
   bool right; // if ray angle is in right unit circle quadrant
   bool up; // if ray angle is in upper unit circle quadrant
+
+  // sortdistance is used to sort which objects are drawn first.
+  // Further objects are drawn first. Value is usually same as distance, but
+  // can be different for edge cases like doors.
+  float sortdistance;
+
   RayHit(int worldX=0, int worldY=0, float angle=0)
   : x(worldX), y(worldY), rayAngle(angle) {
     wallType = strip = wallX = wallY = tileX = distance = 0;
@@ -65,6 +71,7 @@ struct RayHit {
     horizontal = false;
     level = 0;
     sprite = 0;
+    sortdistance = 0;
   }
 };
 
