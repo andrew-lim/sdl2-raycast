@@ -18,7 +18,7 @@ static float fmod2( float a, int b ) {
 
 bool RayHitSorter::operator()(const RayHit& a, const RayHit& b) const
 {
-  // Otherwise sort by eye distance to wall bottom.
+  // Sort by distance between player's eye to wall bottom.
   // Further walls drawn first.
   float wallBottomA = a.level*_raycaster->tileSize;
   float wallBottomB = b.level*_raycaster->tileSize;
@@ -421,7 +421,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
               rayHit.distance += halfDistanceSquared;
               texX = fmod2(vy+stepy/2, tileSize);
 
-              // Give doors slightly higher drawing priority to prevent the
+              // Give doors slightly lower drawing priority to prevent the
               // wall above drawing its bottom surface later than the door
               rayHit.sortdistance -= 1;
             }
@@ -553,7 +553,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
               rayHit.distance += halfDistanceSquared;
               texX = fmod2(hx+stepx/2, tileSize);
 
-              // Give doors slightly higher drawing priority to prevent the
+              // Give doors slightly lower drawing priority to prevent the
               // wall above drawing its bottom surface later than the door
               rayHit.sortdistance -= 1;
             }
