@@ -88,10 +88,15 @@ rayViewDist = squareroot(screenX*screenX + screenDistance*screenDistance)
 asin(opposite / hypotenuse) = angle
 angle = asin(opposite / hypotenuse)
 a = asin( screenX / rayViewDist )
+OR
+a = atan( screenX / screenDistance )
 */
 float Raycaster::stripAngle(float screenX, float screenDistance) {
-    float rayViewDist = sqrt(screenX*screenX +screenDistance*screenDistance);
-    return asin(screenX / rayViewDist);
+  return atan(screenX/screenDistance);
+
+  // Old way using asin()
+  // float rayViewDist = sqrt(screenX*screenX +screenDistance*screenDistance);
+  // return asin(screenX / rayViewDist);
 }
 
 // Calculate the screen height of a wall strip.
