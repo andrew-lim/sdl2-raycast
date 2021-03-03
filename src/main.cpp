@@ -1007,10 +1007,10 @@ void Game::drawFloor(vector<RayHit>& rayHits)
 
       float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
       float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
-      yEnd += player.y;
       xEnd += player.x;
-      int x = (int)(yEnd*textureRepeat) % TILE_SIZE;
-      int y = (int)(xEnd*textureRepeat) % TILE_SIZE;
+      yEnd += player.y;
+      int x = (int)(xEnd*textureRepeat) % TILE_SIZE;
+      int y = (int)(yEnd*textureRepeat) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
       if ( x < 0 || y < 0 || tileX > MAP_WIDTH || tileY > MAP_HEIGHT ) {
@@ -1226,13 +1226,13 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
 
       float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
       float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
-      yEnd += player.y;
       xEnd += player.x;
+      yEnd += player.y;
 
       bool outOfBounds = xEnd<0 || xEnd>=MAP_WIDTH*TILE_SIZE ||
                          yEnd<0 || yEnd>=MAP_HEIGHT*TILE_SIZE;
-      int x = (int)(yEnd) % TILE_SIZE;
-      int y = (int)(xEnd) % TILE_SIZE;
+      int x = (int)(xEnd) % TILE_SIZE;
+      int y = (int)(yEnd) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
       int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
@@ -1284,11 +1284,10 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
 
     float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
     float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
-    yEnd += player.y;
     xEnd += player.x;
-
-    int x = (int)(yEnd) % TILE_SIZE;
-    int y = (int)(xEnd) % TILE_SIZE;
+    yEnd += player.y;
+    int x = (int)(xEnd) % TILE_SIZE;
+    int y = (int)(yEnd) % TILE_SIZE;
     int wallX = xEnd / TILE_SIZE;
     int wallY = yEnd / TILE_SIZE;
 
@@ -1351,10 +1350,10 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 
     float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
     float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
-    yEnd += player.y;
     xEnd += player.x;
-    int x = (int)(yEnd*textureRepeat) % TILE_SIZE;
-    int y = (int)(xEnd*textureRepeat) % TILE_SIZE;
+    yEnd += player.y;
+    int x = (int)(xEnd*textureRepeat) % TILE_SIZE;
+    int y = (int)(yEnd*textureRepeat) % TILE_SIZE;
     int wallX = xEnd / TILE_SIZE;
     int wallY = yEnd / TILE_SIZE;
 
