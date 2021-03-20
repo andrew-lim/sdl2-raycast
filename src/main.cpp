@@ -31,7 +31,7 @@ using namespace al::raycasting;
 using namespace std;
 
 // Length of a wall or cell in game units.
-const int TILE_SIZE = 128;
+const int TILE_SIZE = 12800;
 
 const int TEXTURE_SIZE = 128; // length of wall textures in pixels
 const int MINIMAP_SCALE = 6;
@@ -695,7 +695,7 @@ void Game::updatePlayer(float elapsedTime) {
   float newZ = player.z;
 
   // Jump Logic
-  float jumpSpeed = 3.0f * timeBasedFactor;
+  float jumpSpeed = (TILE_SIZE/40) * timeBasedFactor;
   if (player.jumping) {
     // Going up
     if (player.heightJumped<HALF_JUMP_DISTANCE) {
@@ -1488,69 +1488,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       wallBelowWall= raycaster3D.safeCellAt(rayHit.wallX,rayHit.wallY,
                                             rayHit.level+1);
 
-
-      int sxi = (int) sx;
       SurfaceTexture* img = rayHit.horizontal ? &wallsImageDark : &wallsImage;
-
-      //------------------------------------------------------------------------
-      // Corner Checking Start
-      //
-      // I use different textures for horizontal and vertical lines.
-      // However my raycasting algorithm has problems with some corners
-      // where 2 identical blocks touching each other with the same texture
-      // have a "tear" caused by a perpendicular line.
-      //
-      // For example, for a block type 1, we use texture 1a for its horizontal
-      // faces, and 1b for its vertical faces.
-      //
-      // Now imagine we have 2 blocks of type 1 beside each other on the X-axis.
-      // Their horizontal faces should have the same texture.
-      // But sometimes at the corner where they touch the raycasting algorithm
-      // finds a vertical line (also of the same block type).
-      // So texture 1b is drawn and can cause a visible vertical line tear if
-      // the 1a and 1b texture edges are very different.
-      //
-      // This block of code checks each possible corner where 2 blocks meet
-      // and makes sure the perpendicular line drawn is the right texture.
-      //
-      // If you use the same texture for all sides of a block, you don't need
-      // this check at all and can set cornerCheck to false.
-      //
-      // As for the actual cause I believe it's something to do with fmod()
-      // or floating point calculations during raycasting.
-      //------------------------------------------------------------------------
-      bool cornerCheck = true;
-      bool isLeftEdge = sxi==0;
-      bool isRightEdge = sxi == TEXTURE_SIZE-1;
-      if (cornerCheck && (isLeftEdge||isRightEdge))
-      {
-        const int wallX = rayHit.wallX;
-        const int wallY = rayHit.wallY;
-        const int level = rayHit.level;
-        int rightWall = raycaster3D.safeCellAt(wallX+1, wallY, level);
-        int leftWall = raycaster3D.safeCellAt(wallX-1, wallY, level);
-        int bottomWall = raycaster3D.safeCellAt(wallX, wallY+1, level);
-        int topWall = raycaster3D.safeCellAt(wallX, wallY-1, level);
-        if (isRightEdge) {
-          if (rayHit.horizontal && rayHit.up && !rayHit.right && bottomWall) {
-            img = &wallsImage;
-          }
-          else if (rayHit.up && rayHit.right && leftWall) {
-            img = &wallsImageDark;
-          }
-        }
-        else if (isLeftEdge) {
-          if (rayHit.horizontal && !rayHit.up && !rayHit.right && topWall) {
-            img = &wallsImage;
-          }
-          else if (rayHit.up && !rayHit.right && rightWall) {
-            img = &wallsImageDark;
-          }
-        }
-      }
-      //---------------------
-      // Corner Checking End
-      //---------------------
 
       // Wall is a door
       bool wallIsDoor = Raycaster::isDoor(rayHit.wallType);
