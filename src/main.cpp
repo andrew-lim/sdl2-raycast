@@ -31,7 +31,6 @@ using namespace al::raycasting;
 using namespace std;
 
 // Length of a wall or cell in game units.
-// In the original Wolfenstein 3D it was 8 feet (1 foot = 16 units)
 const int TILE_SIZE = 128;
 
 const int TEXTURE_SIZE = 128; // length of wall textures in pixels
@@ -75,6 +74,11 @@ typedef enum SpriteType {
   SpriteTypeGates = 11
 } SpriteType;
 
+// Fog Settings
+#define FOG_R 150.0f
+#define FOG_G 150.0f
+#define FOG_B 150.0f
+#define FOG_START_DISTANCE (TILE_SIZE*8)
 
 class Game {
 public:
@@ -122,6 +126,8 @@ public:
     float cosine(float f);
     void toggleDoorPressed();
     void toggleDoor(int cellX, int cellY);
+    Uint32 fogPixel( Uint32 pixel, float distance );
+    void fogWallStrip( SDL_Rect* dstrect, float distance  );
 private:
     int displayWidth, displayHeight, stripWidth, rayCount;
     int fovDegrees;
@@ -145,6 +151,7 @@ private:
     bool skipDrawnFloorStrips, skipDrawnSkyboxStrips;
     bool skipDrawnHighestCeilingStrips;
     bool drawWeaponOn;
+    bool fogOn;
     Bitmap ceilingBitmap;
     SDL_Surface* skyboxSurface;
     Uint32 ceilingColor;
@@ -222,6 +229,7 @@ Game::Game()
   drawWeaponOn = true;
   drawWallsOn = true;
   rayHitsCount = 0;
+  fogOn = false;
   reset();
 }
 
@@ -283,7 +291,7 @@ void Game::start() {
   printf("Map size     = %d x %d\n", MAP_WIDTH, MAP_HEIGHT);
   printf("FOV          = %d degrees\n", fovDegrees);
   printf("stripWidth   = %d\n", stripWidth);
-  printf("rayCount     = %d\n", displayWidth/stripWidth);
+  printf("rayCount     = %d\n", rayCount);
   printf("Distance to Projection Plane = %f\n", viewDist);
   printf("Wall size    = %d game units\n", TILE_SIZE);
   printf("Texture Size = %d pixels\n", TEXTURE_SIZE);
@@ -595,6 +603,7 @@ void Game::printHelp() {
          "F      - Toggle textured floors\n"
          "C      - Toggle skybox and ceilings\n"
          "G      - Toggle weapon visibility\n"
+         "5      - Toggle fog\n"
          "H      - Print this message again\n"
          "See config.ini for more settings.\n"
          "=====================================\n");
@@ -937,6 +946,42 @@ void Game::drawRays(vector<RayHit>& rayHits) {
   }
 }
 
+Uint32 Game::fogPixel( Uint32 pixel, float distance ) {
+  float fogFactor = distance / FOG_START_DISTANCE;
+  if ( fogFactor <= 1 ) {
+    return pixel;
+  }
+  Uint32 pixel2 = pixel;
+  Uint8* pixels = (Uint8*)(void*)&pixel2;
+  // Little endian - access RGB in reverse order
+  pixels[ 0 ] = std::min(FOG_B, pixels[ 0 ] * fogFactor); // Blue
+  pixels[ 1 ] = std::min(FOG_G, pixels[ 1 ] * fogFactor); // Green
+  pixels[ 2 ] = std::min(FOG_R, pixels[ 2 ] * fogFactor); // Red
+  return pixel2;
+}
+
+void Game::fogWallStrip( SDL_Rect* dstrect, float distance ) {
+  int startY = dstrect->y;
+  int endY = dstrect->y + dstrect->h;
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+  int startX = dstrect->x;
+  int endX = startX + stripWidth;
+  float fogFactor = distance / FOG_START_DISTANCE;
+  if ( fogFactor <= 1 ) {
+    return;
+  }
+  for ( int x=startX; x>=0 && x<endX && x<displayWidth;  ++x ) {
+    for ( int y=startY; y>=0 && y<endY && y<displayHeight; ++y ) {
+      Uint32 pixel = screenPixels[ x + y * displayWidth ];
+      Uint8* pixel8 = (Uint8*)(void*)&pixel;
+      pixel8[ 0 ] = std::min(FOG_B, pixel8[ 0 ] * fogFactor);
+      pixel8[ 1 ] = std::min(FOG_G, pixel8[ 1 ] * fogFactor);
+      pixel8[ 2 ] = std::min(FOG_R, pixel8[ 2 ] * fogFactor);
+      screenPixels[ x + y * displayWidth ] = pixel;
+    }
+  }
+}
+
 void Game::drawFloor(vector<RayHit>& rayHits)
 {
   // If floor texture mapping off, just draw a solid color
@@ -988,7 +1033,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
     float centerPlane = displayHeight / 2;
     float eyeHeight = TILE_SIZE/2 + player.z;
     int screenX = rayHit.strip * stripWidth;
-    int screenY = (displayHeight - wallScreenHeight)/2 + wallScreenHeight-1;
+    int screenY = (displayHeight - wallScreenHeight)/2 + wallScreenHeight;
     if (screenY < centerPlane) {
       screenY = centerPlane;
     }
@@ -1013,7 +1058,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
       int y = (int)(yEnd*textureRepeat) % TILE_SIZE;
       int tileX = xEnd / TILE_SIZE;
       int tileY = yEnd / TILE_SIZE;
-      if ( x < 0 || y < 0 || tileX > MAP_WIDTH || tileY > MAP_HEIGHT ) {
+      if ( x<0 || y<0 || tileX >= MAP_WIDTH || tileY >= MAP_HEIGHT ) {
         continue;
       }
       int floorTileType = g_floormap[ tileY ][ tileX ];
@@ -1036,15 +1081,19 @@ void Game::drawFloor(vector<RayHit>& rayHits)
                      dstPixel<displayWidth*displayHeight;
 
       if (pixelOK) {
+        Uint32 srcPixelValue = pix[srcPixel];
+        if (fogOn) {
+          srcPixelValue = fogPixel(srcPixelValue, diagonalDistance);
+        }
         switch (stripWidth) {
           case 4:
-            screenPixels[dstPixel+3] = pix[srcPixel];
+            screenPixels[dstPixel+3] = srcPixelValue;
           case 3:
-            screenPixels[dstPixel+2] = pix[srcPixel];
+            screenPixels[dstPixel+2] = srcPixelValue;
           case 2:
-            screenPixels[dstPixel+1] = pix[srcPixel];
+            screenPixels[dstPixel+1] = srcPixelValue;
           default:
-            screenPixels[dstPixel] = pix[srcPixel];
+            screenPixels[dstPixel] = srcPixelValue;
             break;
         }
       }
@@ -1603,6 +1652,9 @@ void Game::drawWallStrip(RayHit& rayHit, SurfaceTexture& img,
 
   dstrect.y -= rayHit.level * wallScreenHeight;
   SDL_BlitScaled(img.getSurface(), &srcrect, screenSurface, &dstrect);
+  if (fogOn) {
+    fogWallStrip(&dstrect, rayHit.correctDistance);
+  }
   int floors = 1;
   while (floors-- > 1) {
     dstrect.y -= wallScreenHeight;
@@ -1662,6 +1714,7 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
   for (int i=0; i<(int)sprites.size(); ++i) {
     sprites[i].rayhit = false;
   }
+
   for (int strip=0; strip<rayCount; strip++) {
     float screenX = (rayCount/2 - strip) * stripWidth;
     const float stripAngle = Raycaster::stripAngle(screenX, viewDist);
@@ -1822,6 +1875,12 @@ void Game::onKeyUp( SDL_Event* evt ) {
         skipDrawnHighestCeilingStrips = !skipDrawnHighestCeilingStrips;
         printf("skipDrawnHighestCeilingStrips = %s\n",
                skipDrawnHighestCeilingStrips?"true":"false");
+        break;
+      }
+      case SDLK_5: {
+        fogOn = !fogOn;
+        printf("fogOn = %s\n",
+               fogOn?"true":"false");
         break;
       }
       case SDLK_h: {
