@@ -1,11 +1,12 @@
 # SDL2 Raycasting Engine
 
-This was originally a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast).
-But there are many more features now including vertical movement, floor/ceiling texture mapping, sprites and projectiles.
+This was originally a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast). If you just want to learn basic floor/ceiling texture mapping in a raycaster, I recommend studying the HTML5 version. The code is easier to read and can be run in your browser.
 
-You can see videos of it in action here:  
-[Video 1](https://www.youtube.com/watch?v=QlM9mbUYROM)  
-[Video 2](https://www.youtube.com/watch?v=RSt2ycuV8JA)  
+This C++ project has a few more features compared to the HTML5 version: vertical movement, wall top/bottom texture mapping, sprites and projectiles.
+
+You can see videos of it in action here:
+[Video 1](https://www.youtube.com/watch?v=QlM9mbUYROM)
+[Video 2](https://www.youtube.com/watch?v=RSt2ycuV8JA)
 
 Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/).
 Note: Use E to open doors and spacebar to shoot.
@@ -27,9 +28,11 @@ Note: Use E to open doors and spacebar to shoot.
 </table>
 
 ## Building
+I highly recommending compiling with some kind of optimization enabled. For Dev-C++ I used the `-O2` flag.
+
 You will need SDL2 and SDL2_mixer.
 
-SDL2 version used is SDL2-devel-2.0.12-mingw.tar.gz.
+SDL2 version used is SDL2-devel-2.0.12-mingw.tar.gz
 https://www.libsdl.org/download-2.0.php
 
 SDL2_mixer version used is SDL2_mixer-devel-2.0.4-mingw.tar.gz
