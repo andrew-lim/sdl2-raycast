@@ -4,8 +4,8 @@ This was originally a port of [my HTML5 canvas version here](https://github.com/
 
 This C++ project has a few more features compared to the HTML5 version: vertical movement, wall top/bottom texture mapping, sprites and projectiles.
 
-You can see videos of it in action here:
-[Video 1](https://www.youtube.com/watch?v=QlM9mbUYROM)
+You can see videos of it in action here:  
+[Video 1](https://www.youtube.com/watch?v=QlM9mbUYROM)  
 [Video 2](https://www.youtube.com/watch?v=RSt2ycuV8JA)
 
 Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/).
@@ -32,13 +32,13 @@ I highly recommending compiling with some kind of optimization enabled. For Dev-
 
 You will need SDL2 and SDL2_mixer.
 
-SDL2 version used is SDL2-devel-2.0.12-mingw.tar.gz
+SDL2 version used is SDL2-devel-2.0.12-mingw.tar.gz  
 https://www.libsdl.org/download-2.0.php
 
-SDL2_mixer version used is SDL2_mixer-devel-2.0.4-mingw.tar.gz
+SDL2_mixer version used is SDL2_mixer-devel-2.0.4-mingw.tar.gz  
 https://www.libsdl.org/projects/SDL_mixer/
 
-So far I've only tested this with Dev-C++ 5.11
+So far I've only tested this with Dev-C++ 5.11  
 https://sourceforge.net/projects/orwelldevcpp/
 
 ## Asset Credits
