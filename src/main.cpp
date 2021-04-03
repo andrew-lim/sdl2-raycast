@@ -31,7 +31,7 @@ using namespace al::raycasting;
 using namespace std;
 
 // Length of a wall or cell in game units.
-const int TILE_SIZE = 12800;
+const int TILE_SIZE = 128;
 
 const int TEXTURE_SIZE = 128; // length of wall textures in pixels
 const int MINIMAP_SCALE = 6;
@@ -1489,6 +1489,59 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                                             rayHit.level+1);
 
       SurfaceTexture* img = rayHit.horizontal ? &wallsImageDark : &wallsImage;
+      //------------------------------------------------------------------------
+      // Corner Checking Start
+      //
+      // I use different textures for horizontal and vertical lines.
+      // However my raycasting algorithm has problems with some corners
+      // where 2 identical blocks touching each other with the same texture
+      // have a "tear" caused by a perpendicular line.
+      //
+      // This block of code checks each possible corner where 2 blocks meet
+      // and makes sure the perpendicular line drawn is the right texture.
+      //
+      // If you use the same texture for all sides of a block, you don't need
+      // this check at all and can set cornerCheck to false.
+      //
+      // As for the actual cause I believe it's something to do with int
+      // calculations during raycasting. If TILE_SIZE is a large number
+      // (e.g. 12800 instead of 128), this check is not necessary.
+      // But a large TILE_SIZE seems to cause frame drops because many
+      // modulus (%) operations use TILE_SIZE.
+      //------------------------------------------------------------------------
+      bool cornerCheck = true;
+      int sxi = (int) sx;
+      bool isLeftEdge = sxi==0;
+      bool isRightEdge = sxi == TEXTURE_SIZE-1;
+      if (cornerCheck && (isLeftEdge||isRightEdge))
+      {
+        const int wallX = rayHit.wallX;
+        const int wallY = rayHit.wallY;
+        const int level = rayHit.level;
+        int rightWall = raycaster3D.safeCellAt(wallX+1, wallY, level);
+        int leftWall = raycaster3D.safeCellAt(wallX-1, wallY, level);
+        int bottomWall = raycaster3D.safeCellAt(wallX, wallY+1, level);
+        int topWall = raycaster3D.safeCellAt(wallX, wallY-1, level);
+        if (isRightEdge) {
+          if (rayHit.horizontal && rayHit.up && !rayHit.right && bottomWall) {
+            img = &wallsImage;
+          }
+          else if (rayHit.up && rayHit.right && leftWall) {
+            img = &wallsImageDark;
+          }
+        }
+        else if (isLeftEdge) {
+          if (rayHit.horizontal && !rayHit.up && !rayHit.right && topWall) {
+            img = &wallsImage;
+          }
+          else if (rayHit.up && !rayHit.right && rightWall) {
+            img = &wallsImageDark;
+          }
+        }
+      }
+      //---------------------
+      // Corner Checking End
+      //---------------------
 
       // Wall is a door
       bool wallIsDoor = Raycaster::isDoor(rayHit.wallType);
