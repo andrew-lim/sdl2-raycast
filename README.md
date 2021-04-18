@@ -2,28 +2,21 @@
 
 This was originally a port of [my HTML5 canvas version here](https://github.com/andrew-lim/html5-raycast). If you just want to learn basic floor/ceiling texture mapping in a raycaster, I recommend studying the HTML5 version. The code is easier to read and can be run in your browser.
 
-This C++ project has a few more features compared to the HTML5 version: vertical movement, wall top/bottom texture mapping, sprites and projectiles.
+This C++ project has a few more features compared to the HTML5 version: vertical movement, wall top/bottom texture mapping, sprites and projectiles. There is also experimental support for thin angled walls and slopes.
 
-You can see videos of it in action here:  
-[Video 1](https://www.youtube.com/watch?v=QlM9mbUYROM)  
-[Video 2](https://www.youtube.com/watch?v=RSt2ycuV8JA)
+You can see [videos of it in action here](https://www.youtube.com/watch?v=cYxKfS5-ABQ&list=PL4Pn9mFG1hxRhvl7PIsjKVW3evfVWzl7e&ab_channel=AndrewLim).
 
 Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/releases/).
-Note: Use E to open doors and spacebar to shoot.
 
 ## Screenshots
 <table style="padding:10px">
   <tr>
+    <td width="50%"><img src="res/screenshot6_800x600.jpg"/></td>
     <td width="50%"><img src="res/screenshot4_800x600.jpg"/></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="res/screenshot5_800x600.jpg"/></td>
-  </tr>
-  <tr>
     <td width="50%"><img src="res/screenshot1_800x600.jpg"/></td>
-    <td width="50%"><img src="res/screenshot2_800x600.jpg"/></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="res/screenshot3_800x600.jpg"/></td>
-    <td width="50%"></td>
   </tr>
 </table>
 
