@@ -3,8 +3,332 @@
 #include <algorithm>
 #include <cstdio>
 #include <cassert>
+#include "shape.h"
 using namespace std;
 using namespace al::raycasting;
+
+ThinWall::ThinWall()
+{
+  this->x1 = 0;
+  this->y1 = 0;
+  this->x2 = 0;
+  this->y2 = 0;
+  wallType = 0;
+  horizontal = false;
+  height = 0;
+  z = 0;
+  hidden = false;
+  thickWall = 0;
+  slope = 0;
+}
+
+ThinWall::ThinWall(float x1, float y1, float x2, float y2, int wallType,
+                   ThickWall* thickWall, float wallHeight)
+{
+  this->x1 = x1;
+  this->y1 = y1;
+  this->x2 = x2;
+  this->y2 = y2;
+  this->wallType = wallType;
+  horizontal = false;
+  height = wallHeight;
+  z = 0;
+  hidden = false;
+  this->thickWall = thickWall;
+  slope = 0;
+}
+
+float ThinWall::distanceToOrigin(float ix, float iy)
+{
+  float dx = x1 - ix;
+  float dy = y1 - iy;
+  return sqrt(dx*dx + dy*dy);
+}
+
+ThickWall::ThickWall()
+{
+  type = 0;
+  slopeType = 0;
+  height = 0;
+  x = y = w = h = z = 0;
+  slope = 0;
+  ceilingTextureID = 0;
+  floorTextureID = 0;
+  startHeight = endHeight = tallerHeight = 0;
+  invertedSlope = false;
+}
+
+void ThickWall::createRectThickWall(float x, float y, float w, float h,
+                                    float z, float wallHeight)
+{
+  this->type = THICK_WALL_TYPE_RECT;
+  this->x = x;
+  this->y = y;
+  this->w = w;
+  this->h = h;
+  Point topLeft(x,y);
+  Point topRight(x+w, y);
+  Point bottomLeft(x, y+h);
+  Point bottomRight(x+w, y+h);
+  int wallType = 0;
+  thinWalls.clear();
+  // West
+  thinWalls.push_back(ThinWall(topLeft.x,topLeft.y,bottomLeft.x,bottomLeft.y,
+                               wallType, this, wallHeight));
+
+  // East
+  thinWalls.push_back(ThinWall(topRight.x, topRight.y, bottomRight.x,
+                               bottomRight.y, wallType, this, wallHeight));
+
+  // North
+  thinWalls.push_back(ThinWall(topLeft.x, topLeft.y, topRight.x, topRight.y,
+                               wallType, this, wallHeight));
+
+
+  // South
+  thinWalls.push_back(ThinWall(bottomLeft.x, bottomLeft.y, bottomRight.x,
+                               bottomRight.y, wallType, this, wallHeight));
+
+  thinWalls[2].horizontal = true;
+  thinWalls[3].horizontal = true;
+
+  setHeight(wallHeight);
+  setZ(z);
+}
+
+void ThickWall::createTriangleThickWall(const Point& v1, const Point& v2,
+                                        const Point &v3, float z,
+                                        float h)
+{
+  this->type = THICK_WALL_TYPE_TRIANGLE;
+  points.clear();
+  points.push_back(v1);
+  points.push_back(v2);
+  points.push_back(v3);
+  int wallType = 0;
+  thinWalls.clear();
+  thinWalls.push_back(ThinWall(v1.x, v1.y, v2.x, v2.y, wallType, this, h));
+  thinWalls.push_back(ThinWall(v2.x, v2.y, v3.x, v3.y, wallType, this, h));
+  thinWalls.push_back(ThinWall(v3.x, v3.y, v1.x, v1.y, wallType, this, h));
+  thinWalls[1].horizontal = true;
+  setHeight(h);
+  setZ(z);
+}
+
+void ThickWall::createQuadThickWall(const Point& v1, const Point& v2,
+                                    const Point &v3, const Point& v4,
+                                    float z, float h)
+{
+  this->type = THICK_WALL_TYPE_QUAD;
+  points.clear();
+  points.push_back(v1);
+  points.push_back(v2);
+  points.push_back(v3);
+  points.push_back(v4);
+  int wallType = 0;
+  thinWalls.clear();
+  thinWalls.push_back(ThinWall(v1.x, v1.y, v2.x, v2.y, wallType, this, h));
+  thinWalls.push_back(ThinWall(v2.x, v2.y, v3.x, v3.y, wallType, this, h));
+  thinWalls.push_back(ThinWall(v3.x, v3.y, v4.x, v4.y, wallType, this, h));
+  thinWalls.push_back(ThinWall(v4.x, v4.y, v1.x, v1.y, wallType, this, h));
+  setHeight(h);
+  setZ(z);
+  thinWalls[2].horizontal = true;
+  thinWalls[3].horizontal = true;
+}
+
+void ThickWall::createRectSlope(int slopeType,
+                                float x, float y, float w, float h, float z,
+                                float startHeight, float endHeight)
+{
+  this->slopeType = slopeType;
+  this->startHeight = startHeight;
+  this->endHeight = endHeight;
+  tallerHeight = startHeight > endHeight ? startHeight : endHeight;
+  if (SLOPE_TYPE_WEST_EAST == slopeType) {
+    createRectThickWall(x,y,w,h,z,endHeight);
+    this->slope = (endHeight - startHeight) / w;
+    thinWalls[ 0 ].height = startHeight; // west
+    thinWalls[ 1 ].height = endHeight; // east
+    thinWalls[ 2 ].slope  = slope; // north
+    thinWalls[ 3 ].slope  = slope; //south
+  }
+  else if (SLOPE_TYPE_NORTH_SOUTH == slopeType) {
+    createRectThickWall(x,y,w,h,z,endHeight);
+    this->slope = (endHeight - startHeight) / h;
+    thinWalls[ 0 ].slope = slope; // west
+    thinWalls[ 1 ].slope = slope; // east
+    thinWalls[ 2 ].height  = startHeight; // north
+    thinWalls[ 3 ].height  = endHeight; //south
+  }
+  setZ(z);
+}
+
+void ThickWall::createRectInvertedSlope(int slopeType,
+                                        float x, float y, float w, float h,
+                                        float z,
+                                        float startHeight, float endHeight)
+{
+  this->invertedSlope = true;
+  this->slopeType = slopeType;
+  this->startHeight = startHeight;
+  this->endHeight = endHeight;
+
+  tallerHeight = startHeight > endHeight ? startHeight : endHeight;
+
+  float newStartHeight = (tallerHeight - startHeight);
+  float newEndHeight   = (tallerHeight - endHeight);
+  if (newStartHeight == 0) {
+    newStartHeight = 1;
+  }
+  if (newEndHeight == 0) {
+    newEndHeight = 1;
+  }
+
+  if (SLOPE_TYPE_WEST_EAST == slopeType) {
+    createRectThickWall(x,y,w,h,z,endHeight);
+    this->slope = (endHeight - startHeight) / w;
+    thinWalls[ 0 ].height = newStartHeight; // west
+    thinWalls[ 1 ].height = newEndHeight; // east
+    thinWalls[ 2 ].slope  = slope; // north
+    thinWalls[ 3 ].slope  = slope; //south
+    setZ(z);
+    thinWalls[ 0 ].z = z + startHeight;
+    thinWalls[ 1 ].z = z + endHeight;
+  }
+  else if (SLOPE_TYPE_NORTH_SOUTH == slopeType) {
+    createRectThickWall(x,y,w,h,z,endHeight);
+    this->slope = (endHeight - startHeight) / h;
+    thinWalls[ 0 ].slope = slope; // west
+    thinWalls[ 1 ].slope = slope; // east
+    thinWalls[ 2 ].height  = newStartHeight; // north
+    thinWalls[ 3 ].height  = newEndHeight; //south
+    setZ(z);
+    thinWalls[ 2 ].z = z + startHeight;
+    thinWalls[ 3 ].z = z + endHeight;
+  }
+}
+
+void ThickWall::setTallerHeight(float newTallerHeight)
+{
+  tallerHeight = newTallerHeight;
+
+  if (invertedSlope) {
+    if (startHeight > endHeight) {
+      startHeight = tallerHeight;
+    }
+    else {
+      endHeight = tallerHeight;
+    }
+
+    float newStartHeight = (tallerHeight - startHeight);
+    float newEndHeight   = (tallerHeight - endHeight);
+    if (newStartHeight == 0) {
+      newStartHeight = 1;
+    }
+    if (newEndHeight == 0) {
+      newEndHeight = 1;
+    }
+
+    if (SLOPE_TYPE_WEST_EAST == slopeType) {
+      this->slope = (endHeight - startHeight) / w;
+      thinWalls[ 0 ].height = newStartHeight; // west
+      thinWalls[ 1 ].height = newEndHeight; // east
+      thinWalls[ 2 ].slope  = slope; // north
+      thinWalls[ 3 ].slope  = slope; //south
+      setZ(z);
+      thinWalls[ 0 ].z = z + startHeight;
+      thinWalls[ 1 ].z = z + endHeight;
+    }
+    else if (SLOPE_TYPE_NORTH_SOUTH == slopeType) {
+      this->slope = (endHeight - startHeight) / h;
+      thinWalls[ 0 ].slope = slope; // west
+      thinWalls[ 1 ].slope = slope; // east
+      thinWalls[ 2 ].height  = newStartHeight; // north
+      thinWalls[ 3 ].height  = newEndHeight; //south
+      setZ(z);
+      thinWalls[ 2 ].z = z + startHeight;
+      thinWalls[ 3 ].z = z + endHeight;
+    }
+  }
+  // Normal slope
+  else {
+    if (SLOPE_TYPE_WEST_EAST == slopeType) {
+      if (thinWalls[ 0 ].height > thinWalls[ 1 ].height) {
+        thinWalls[ 0 ].height = newTallerHeight;
+        startHeight = tallerHeight;
+        slope = (endHeight - startHeight) / w;
+      }
+      else if (thinWalls[ 1 ].height > thinWalls[ 0 ].height) {
+        thinWalls[ 1 ].height = newTallerHeight;
+        endHeight = tallerHeight;
+        slope = (endHeight - startHeight) / w;
+      }
+      thinWalls[ 2 ].slope  = slope; // north
+      thinWalls[ 3 ].slope  = slope; //south
+    }
+    else if (SLOPE_TYPE_NORTH_SOUTH == slopeType) {
+      if (thinWalls[ 2 ].height > thinWalls[ 3 ].height) {
+        thinWalls[ 2 ].height = newTallerHeight;
+        tallerHeight = newTallerHeight;
+      }
+      else if  (thinWalls[ 3 ].height > thinWalls[ 3 ].height) {
+        thinWalls[ 3 ].height = newTallerHeight;
+        tallerHeight = newTallerHeight;
+      }
+    }
+  }
+}
+
+void ThickWall::setZ(float z)
+{
+  this->z = z;
+  for (size_t i=0; i<thinWalls.size(); ++i) {
+    thinWalls[i].z = z;
+  }
+}
+
+void ThickWall::setHeight(float wallHeight)
+{
+  this->height = wallHeight;
+  for (size_t i=0; i<thinWalls.size(); ++i) {
+    thinWalls[i].height = wallHeight;
+  }
+}
+
+void ThickWall::setThinWallsType(int wallType)
+{
+  for (size_t i=0; i<thinWalls.size(); ++i) {
+    thinWalls[i].wallType = wallType;
+  }
+}
+
+bool ThickWall::containsPoint(float px, float py)
+{
+  if (type == THICK_WALL_TYPE_RECT) {
+    return Shape::pointInRect(px, py, this->x, this->y, this->w, this->h);
+  }
+  if (type == THICK_WALL_TYPE_TRIANGLE) {
+    return Shape::pointInTriangle(Point(px,py),points[2],points[1],points[0]);
+  }
+  if (type == THICK_WALL_TYPE_QUAD) {
+    return Shape::pointInQuad(
+      Point(px,py),points[0],points[1],points[2],points[3]
+    );
+  }
+  return false;
+}
+
+bool RayHit::sameRayHit(const RayHit& rayHit2)
+{
+  const RayHit& rayHit = *this;
+  return rayHit.x        == rayHit2.x &&
+         rayHit.y        == rayHit2.y &&
+         rayHit.wallType == rayHit2.wallType &&
+         rayHit.strip    == rayHit2.strip &&
+         rayHit.thinWall == rayHit2.thinWall &&
+         rayHit.rayAngle == rayHit2.rayAngle;
+}
 
 #define USE_FMOD 1
 
@@ -18,6 +342,11 @@ static float fmod2( float a, int b ) {
 
 bool RayHitSorter::operator()(const RayHit& a, const RayHit& b) const
 {
+  // If either wall is a ThinWall, just use the direct distance
+  if (a.thinWall || b.thinWall) {
+    return a.distance > b.distance;
+  }
+
   // Sort by distance between player's eye to wall bottom.
   // Further walls drawn first.
   float wallBottomA = a.level*_raycaster->tileSize;
@@ -364,9 +693,8 @@ void Raycaster::raycast(vector<RayHit>& hits,
       int wallX = floor(vx / tileSize);
       int wallOffset = wallX + wallY * gridWidth;
 
-
       // Look for sprites in current cell
-      if (spritesToLookFor && level==0) {
+      if (spritesToLookFor&&level==0) {
         vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
                                                           wallX, wallY,
                                                           tileSize );
@@ -491,7 +819,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       int wallOffset = wallX + wallY * gridWidth;
 
       // Look for sprites in current cell
-      if (spritesToLookFor && level==0) {
+      if (spritesToLookFor&&level==0) {
         vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
                                                           wallX, wallY,
                                                           tileSize );
@@ -524,7 +852,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       if (grid[wallOffset]>0 && !isVerticalDoor(grid[wallOffset])) {
         const float distX = playerX - hx;
         const float distY = playerY - hy;
-        const float blockDist = distX*distX + distY*distY;
+        float blockDist = distX*distX + distY*distY;
 
         // If vertical distance is less than horizontal line distance, stop
         if (verticalLineDistance>0 && verticalLineDistance<blockDist) {
@@ -599,4 +927,190 @@ void Raycaster::raycast(vector<RayHit>& hits,
       hits.push_back(verticalWallHit);
     }
   }
+}
+
+void Raycaster::findIntersectingThinWalls(std::vector<RayHit>& rayHits,
+                                          std::vector<ThinWall*>& thinWalls,
+                                          float playerX,
+                                          float playerY,
+                                          float rayEndX,
+                                          float rayEndY)
+{
+  for (int i=0; i<(int)thinWalls.size(); ++i) {
+    ThinWall& thinWall = *thinWalls[i];
+    float ix=0, iy=0;
+    bool hitFound = Shape::linesIntersect(thinWall.x1, thinWall.y1,
+                                          thinWall.x2, thinWall.y2,
+                                          playerX, playerY,
+                                          rayEndX, rayEndY,
+                                          &ix, &iy);
+    if (hitFound) {
+      RayHit rayHit;
+      float distX = playerX - ix;
+      float distY = playerY - iy;
+      float squaredDistance = distX*distX + distY*distY;
+      rayHit.squaredDistance = squaredDistance;
+      rayHit.distance = sqrt(squaredDistance);
+      rayHit.thinWall = &thinWall;
+      rayHit.x = ix;
+      rayHit.y = iy;
+      rayHits.push_back(rayHit);
+    }
+  }
+}
+
+void Raycaster::raycastThinWalls(std::vector<RayHit>& rayHits,
+                                 std::vector<ThinWall*>& thinWalls,
+                                 float playerX, float playerY, float playerZ,
+                                 float playerRot,
+                                 float stripAngle, int stripIdx)
+{
+  const float TWO_PI = M_PI*2;
+  float rayAngle = stripAngle + playerRot;
+  while (rayAngle < 0) rayAngle += TWO_PI;
+  while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
+
+  bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
+              (rayAngle>TWO_PI*0.75); // Quadrant 4
+
+  float vx = 0;
+  if (right) {
+    vx = gridWidth * tileSize;
+  }
+  else {
+    vx = 0;
+  }
+
+  float vy = playerY + (playerX-vx)*tan(rayAngle);
+
+  std::vector<RayHit> newRayHits;
+  std::vector<RayHit*> addedRayHits;
+  findIntersectingThinWalls(newRayHits, thinWalls, playerX, playerY, vx, vy);
+  for (int i=0; i<(int)newRayHits.size(); ++i) {
+    RayHit& rayHit = newRayHits[i];
+    ThinWall* thinWall = rayHit.thinWall;
+    ThickWall* thickWall = thinWall->thickWall;
+
+    rayHit.wallHeight = thinWall->height;
+    rayHit.strip      = stripIdx;
+    float dto         = round(thinWall->distanceToOrigin(rayHit.x,rayHit.y));
+    rayHit.tileX      = (int)(dto) % this->tileSize;
+    rayHit.horizontal = thinWall->horizontal;
+    rayHit.wallType   = thinWall->wallType;
+    rayHit.rayAngle   = rayAngle;
+    if (rayHit.distance) {
+      rayHit.correctDistance = rayHit.distance * cos( playerRot - rayAngle );
+    }
+
+    // Slope
+    if (thinWall->slope) {
+      rayHit.wallHeight = thickWall->startHeight + thinWall->slope *
+                          thinWall->distanceToOrigin(rayHit.x,rayHit.y);
+      if (thickWall->invertedSlope) {
+        rayHit.invertedZ = rayHit.wallHeight;
+        rayHit.wallHeight = thickWall->tallerHeight - rayHit.wallHeight;
+      }
+    }
+
+    if (thickWall && thickWall->slope) {
+      for (int j=0; j<(int)addedRayHits.size(); ++j) {
+        RayHit* addedRayHit = addedRayHits[ j ];
+        if (!addedRayHit->sameRayHit(rayHit)) {
+          if (addedRayHit->thinWall->thickWall == thickWall) {
+            addedRayHit->copySibling(rayHit);
+            rayHit.copySibling(*addedRayHit);
+          }
+        }
+      }
+    }
+
+    addedRayHits.push_back(&rayHit);
+  }
+
+  for (size_t i=0; i<addedRayHits.size(); ++i) {
+    rayHits.push_back(*addedRayHits[i]);
+  }
+}
+
+bool Raycaster::findSiblingAtAngle(RayHit& sibling,
+                                   ThinWall& originThinWall,
+                                   std::vector<ThinWall*>& thinWalls,
+                                   float originAngle, float playerRot,
+                                   int stripIdx, float playerX, float playerY,
+                                   float rayStartX, float rayStartY)
+{
+  if (!originThinWall.thickWall) {
+    return false;
+  }
+
+  const float TWO_PI = M_PI*2;
+  float rayAngle = originAngle; // Note: we don't add player angle
+  while (rayAngle < 0) rayAngle += TWO_PI;
+  while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
+
+  bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
+              (rayAngle>TWO_PI*0.75); // Quadrant 4
+
+  float vx = 0;
+  if (right) {
+    vx = gridWidth * tileSize;
+  }
+  else {
+    vx = 0;
+  }
+
+  float vy = playerY + (playerX-vx)*tan(rayAngle);
+
+  for (size_t i=0; i<thinWalls.size(); ++i) {
+    ThinWall* thinWall = thinWalls[i];
+    if (thinWall == &originThinWall) {
+      continue;
+    }
+
+    if (thinWall->thickWall!=originThinWall.thickWall) {
+      continue;
+    }
+
+    RayHit rayHit;
+    if (Shape::linesIntersect(thinWall->x1, thinWall->y1,
+                              thinWall->x2, thinWall->y2,
+                              rayStartX, rayStartY,
+                              vx, vy, &rayHit.x, &rayHit.y))
+    {
+      ThickWall* thickWall = thinWall->thickWall;
+      rayHit.thinWall = thinWall;
+
+      float distX = rayStartX - rayHit.x;
+      float distY = rayStartY - rayHit.y;
+      float squaredDistance = distX*distX + distY*distY;
+      rayHit.squaredDistance = squaredDistance;
+      rayHit.distance = sqrt(rayHit.squaredDistance);
+
+      rayHit.wallHeight = thinWall->height;
+      rayHit.strip      = stripIdx;
+      float dto         = round(thinWall->distanceToOrigin(rayHit.x,rayHit.y));
+      rayHit.tileX      = (int)(dto) % this->tileSize;
+      rayHit.horizontal = thinWall->horizontal;
+      rayHit.wallType   = thinWall->wallType;
+      rayHit.rayAngle   = rayAngle;
+      if (rayHit.distance) {
+        rayHit.correctDistance = rayHit.distance * cos( playerRot - rayAngle );
+      }
+
+      // Slope
+      if (thinWall->slope) {
+        rayHit.wallHeight = thickWall->startHeight + thinWall->slope *
+                            thinWall->distanceToOrigin(rayHit.x,rayHit.y);
+        if (thickWall->invertedSlope) {
+          rayHit.invertedZ = rayHit.wallHeight;
+          rayHit.wallHeight = thickWall->tallerHeight - rayHit.wallHeight;
+        }
+      }
+
+      sibling = rayHit;
+
+      return true;
+    }
+  }
+  return false;
 }

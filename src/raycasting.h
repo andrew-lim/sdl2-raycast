@@ -5,9 +5,79 @@ https://github.com/andrew-lim/
 #ifndef ANDREW_LIM_RAYCASTING_H
 #define ANDREW_LIM_RAYCASTING_H
 #include <vector>
+#include "shape.h"
+
+#define THICK_WALL_TYPE_NONE 0
+#define THICK_WALL_TYPE_RECT 1
+#define THICK_WALL_TYPE_TRIANGLE 2
+#define THICK_WALL_TYPE_QUAD 3
+
+#define SLOPE_TYPE_WEST_EAST 1
+#define SLOPE_TYPE_NORTH_SOUTH 2
 
 namespace al {
 namespace raycasting {
+
+// A ThinWall is made up of 2 points. Similar to a linedef in Doom.
+struct ThinWall {
+public:
+  float x1, y1, x2, y2; // start and end of line
+  int wallType;
+  bool horizontal;
+  float height;
+  float z;
+  float slope;
+  bool hidden;
+  struct ThickWall* thickWall;
+public:
+  ThinWall();
+  ThinWall(float x1, float y1, float x2, float y2, int wallType,
+           ThickWall* thickWall, float wallHeight);
+  float distanceToOrigin(float ix, float iy);
+};
+
+// A ThickWall is an enclosed area of ThinWalls.
+// It can have a ceiling texture and a floor texture.
+// It may also be sloped.
+struct ThickWall {
+public:
+  int type;
+  int slopeType;
+  std::vector<ThinWall> thinWalls;
+  float x, y, w, h; // if type is THICK_WALL_TYPE_RECT
+  std::vector<Point> points; // for THICK_WALL_TYPE_TRIANGLE and QUAD
+  float slope;
+  int ceilingTextureID;
+  int floorTextureID;
+  float startHeight, endHeight;
+  float tallerHeight;
+  bool invertedSlope;
+public:
+  ThickWall();
+  void createRectThickWall(float x, float y, float w, float h, float z,
+                           float wallHeight);
+  void createTriangleThickWall(const Point& v1, const Point& v2,
+                               const Point &v3, float z, float wallHeight);
+  void createQuadThickWall(const Point& v1, const Point& v2,
+                           const Point &v3, const Point& v4,
+                           float z, float wallHeight);
+  void createRectSlope(int slopeType,
+                       float x, float y, float w, float h, float z,
+                       float startHeight, float endHeight);
+  void createRectInvertedSlope(int slopeType,
+                               float x, float y, float w, float h, float z,
+                               float startHeight, float endHeight);
+  void setZ(float z);
+  float getZ() { return z; }
+  void setHeight(float height);
+  float getHeight() { return height; }
+  void setThinWallsType(int wallType);
+  bool containsPoint(float x, float y);
+  void setTallerHeight(float height);
+private:
+  float height;
+  float z;
+};
 
 class Sprite {
 public:
@@ -50,6 +120,7 @@ struct RayHit {
   int wallType;     // type of wall hit
   int strip;        // strip on screen for this wall
   float tileX;     // x-coordinate within tile, used for calculating texture x
+  float squaredDistance; // squared distance
   float distance;  // distance to wall
   float correctDistance; // fisheye correction distance
   bool horizontal;  // true if wall was hit on the bottom or top
@@ -58,6 +129,16 @@ struct RayHit {
   int level; // ground level (0) or some other level.
   bool right; // if ray angle is in right unit circle quadrant
   bool up; // if ray angle is in upper unit circle quadrant
+  ThinWall* thinWall;
+  float wallHeight;
+  float invertedZ;
+
+  // Slope sibling
+  float siblingWallHeight;
+  float siblingDistance;
+  float siblingCorrectDistance;
+  float siblingThinWallZ;
+  float siblingInvertedZ;
 
   // sortdistance is used to sort which objects are drawn first.
   // Further objects are drawn first. Value is usually same as distance, but
@@ -66,13 +147,30 @@ struct RayHit {
 
   RayHit(int worldX=0, int worldY=0, float angle=0)
   : x(worldX), y(worldY), rayAngle(angle) {
-    wallType = strip = wallX = wallY = tileX = distance = 0;
+    wallType = strip = wallX = wallY = tileX = squaredDistance = distance = 0;
     correctDistance = 0;
     horizontal = false;
     level = 0;
     sprite = 0;
     sortdistance = 0;
+    thinWall = 0;
+    wallHeight = 0;
+    invertedZ = 0;
+    siblingWallHeight = siblingDistance = siblingCorrectDistance = 0;
+    siblingThinWallZ = siblingInvertedZ = 0;
   }
+
+  void copySibling(RayHit& rayHit2) {
+    siblingWallHeight = rayHit2.wallHeight;
+    siblingDistance = rayHit2.distance;
+    siblingCorrectDistance = rayHit2.correctDistance;
+    if (rayHit2.thinWall) {
+      siblingThinWallZ = rayHit2.thinWall->z;
+    }
+    siblingInvertedZ = rayHit2.invertedZ;
+  }
+
+  bool sameRayHit(const RayHit& rayHit2);
 };
 
 /**
@@ -123,7 +221,7 @@ public:
   // This checks multiple levels of blocks, not just the one directly below.
   static bool anySpaceBelow( std::vector< std::vector<int> >& grids,
                              int gridWidth, int x, int y, int z );
-                             
+
    // Checks if there are any empty blocks above specified block.
   // This checks multiple levels of blocks, not just the one directly above.
   static bool anySpaceAbove( std::vector< std::vector<int> >& grids,
@@ -170,6 +268,26 @@ public:
   static bool isDoor(int wallType) {
     return isVerticalDoor(wallType) || isHorizontalDoor(wallType);
   }
+
+  static void findIntersectingThinWalls(std::vector<RayHit>& rayHits,
+                                        std::vector<ThinWall*>& thinWalls,
+                                        float playerX,
+                                        float playerY,
+                                        float rayEndX,
+                                        float rayEndY);
+
+  void raycastThinWalls(std::vector<RayHit>& rayHits,
+                        std::vector<ThinWall*>& thinWalls,
+                        float playerX, float playerY, float playerZ,
+                        float playerRot,
+                        float stripAngle, int stripIdx);
+
+  bool findSiblingAtAngle(RayHit& sibling,
+                          ThinWall& originThinWall,
+                          std::vector<ThinWall*>& thinWalls,
+                          float originAngle, float playerRot,
+                          int stripIdx, float playerX, float playerY,
+                          float rayStartX, float rayStartY);
 };
 
 /**
@@ -185,7 +303,6 @@ struct RayHitSorter {
   {}
   bool operator()(const RayHit& a, const RayHit& b) const;
 };
-
 
 } // raycasting
 } // al

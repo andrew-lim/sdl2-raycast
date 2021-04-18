@@ -29,6 +29,7 @@ Recommended compiler settings
 using namespace al::sdl2utils;
 using namespace al::raycasting;
 using namespace std;
+using namespace al;
 
 // Length of a wall or cell in game units.
 const int TILE_SIZE = 128;
@@ -57,6 +58,15 @@ void array2DToVector(int arr[MAP_HEIGHT][MAP_WIDTH], std::vector<int>& out) {
     for (int x=0; x<MAP_WIDTH; x++) {
       out.push_back(arr[y][x]);
     }
+  }
+}
+
+// Copies the addresses of ThinWalls from in vector b to a
+void appendThinWalls( std::vector<ThinWall*>& a,
+                      std::vector<ThinWall>& b)
+{
+  for (size_t i=0; i<b.size(); ++i) {
+    a.push_back( &b[i] );
   }
 }
 
@@ -100,6 +110,10 @@ public:
     void update(float timeElapsed);
     void drawWallTop(RayHit& rayHit, int wallScreenHeight, float playerScreenZ);
     void drawWallBottom(RayHit&rayHit,int wallScreenHeight,float playerScreenZ);
+    void drawThinWallTop(RayHit& rayHit, int wallScreenHeight);
+    void drawThinWallBottom(RayHit& rayHit, int wallScreenHeight);
+    bool drawSlope(RayHit& rayHit);
+    bool drawSlopeInverted(RayHit& rayHit);
     void drawFloor(vector<RayHit>& rayHits);
     void drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits);
     void drawWeapon();
@@ -110,10 +124,18 @@ public:
     void drawPlayer();
     void drawRay(float rayX, float rayY);
     void drawRays(vector<RayHit>& rayHits);
+    float wallScreenY(RayHit& rayHit, float wallHeight);
+    SDL_Rect stripScreenRect(RayHit& rayHit, float wallHeight);
+    void drawSlopeStrip(RayHit& rayHit, SurfaceTexture& img,
+                        float textureX, float textureY);
+    void drawThinWallStrip(RayHit& rayHit, SurfaceTexture& img,
+                           float textureX, float textureY,
+                           bool aboveWall=false, bool beloWall=false);
     void drawWallStrip(RayHit& rayHit, SurfaceTexture& img,
                        float textureX, float textureY,
                        int wallScreenHeight,
                        bool aboveWall=false, bool beloWall=false);
+    bool ignoreWallStrip(RayHit& rayHit);
     void drawWorld(vector<RayHit>& rayHits);
     void raycastWorld(vector<RayHit>& rayHits);
     bool isWallCell(int wallX, int wallY, int level=0);
@@ -128,6 +150,8 @@ public:
     void toggleDoor(int cellX, int cellY);
     Uint32 fogPixel( Uint32 pixel, float distance );
     void fogWallStrip( SDL_Rect* dstrect, float distance  );
+    float slopeHeightAt(float worldX, float worldY);
+    void createThinWalls();
 private:
     int displayWidth, displayHeight, stripWidth, rayCount;
     int fovDegrees;
@@ -137,7 +161,6 @@ private:
     Raycaster raycaster3D;
     std::vector<int> ceilingGrid;
     std::vector<int> groundWalls;
-    std::map<int,int> keys; // store keydown presses
     int frameSkip ;
     int running ;
     SDL_Window* window;
@@ -167,7 +190,213 @@ private:
     int highestCeilingLevel;
     int rayHitsCount;
     int doors[MAP_WIDTH * MAP_HEIGHT];
+    std::vector<ThinWall*> thinWalls;
+    ThickWall* rectWall;
+    ThickWall* triangleWall;
+    ThickWall* diamondWall;
+    std::vector<ThickWall*> helloWalls;
+    std::vector<ThickWall*> slopedWalls;
 };
+
+
+Game::Game()
+:frameSkip(0), running(0), window(NULL), renderer(NULL) {
+  srand (time(NULL));
+  drawMiniMapOn = true;
+  skipDrawnFloorStrips = true;
+  skipDrawnSkyboxStrips = true;
+  skipDrawnHighestCeilingStrips = true;
+  drawTexturedFloorOn = true;
+  drawCeilingOn = true;
+  drawWeaponOn = true;
+  drawWallsOn = true;
+  rayHitsCount = 0;
+  fogOn = false;
+  rectWall = triangleWall = diamondWall = 0;
+  reset();
+}
+
+Game::~Game() {
+  this->stop();
+}
+
+void Game::reset()
+{
+  pitch = 0;
+
+  highestCeilingLevel = 3;
+
+  raycaster3D.createGrids(MAP_WIDTH, MAP_HEIGHT,highestCeilingLevel, TILE_SIZE);
+  array2DToVector(g_map, raycaster3D.grids[0]);
+  array2DToVector(g_map2, raycaster3D.grids[1]);
+  array2DToVector(g_map3, raycaster3D.grids[2]);
+
+  array2DToVector(g_ceilingmap, ceilingGrid);
+
+  player.x = 26 * TILE_SIZE;
+  player.y = 6 * TILE_SIZE;
+  player.z = 0;
+  player.rot = 0;
+  player.moveSpeed = TILE_SIZE / (DESIRED_FPS/60.0f*16);
+  player.rotSpeed = 1.5 * M_PI/180;
+
+  sprites.clear();
+  for (int y=0; y<MAP_HEIGHT; y++) {
+    for (int x=0; x<MAP_WIDTH; x++) {
+      int spriteid = g_spritemap[ y ][ x ];
+      if (spriteid) {
+        addSpriteAt( spriteid, x, y );
+      }
+    }
+  }
+
+  for (int y=0; y<MAP_HEIGHT; ++y) {
+    for (int x=0; x<MAP_WIDTH; ++x) {
+      doors[ x + y * MAP_WIDTH ] = 0;
+    }
+  }
+
+  createThinWalls();
+}
+
+void Game::createThinWalls()
+{
+  float commonZ = TILE_SIZE*0;
+  int commonThinWallType = 4;
+  int commonCeilingTextureID = 5;
+  int commonFloorTextureID = 8;
+  int commonHeight = TILE_SIZE * 0.2;
+
+  if (slopedWalls.empty()) {
+    // Floor slope 1
+    ThickWall* slopedWall = new ThickWall();
+    slopedWall->createRectSlope(
+      SLOPE_TYPE_WEST_EAST,
+      5*TILE_SIZE, 19*TILE_SIZE, TILE_SIZE*3, TILE_SIZE*1, 0,
+      1, TILE_SIZE
+    );
+    slopedWalls.push_back(slopedWall);
+    slopedWall->ceilingTextureID = commonCeilingTextureID;
+    slopedWall->floorTextureID = 5;
+    slopedWall->setThinWallsType(commonThinWallType);
+    appendThinWalls(thinWalls, slopedWall->thinWalls);
+
+    // Floor slope 2
+    slopedWall = new ThickWall();
+    slopedWall->createRectSlope(
+      SLOPE_TYPE_NORTH_SOUTH,
+      11*TILE_SIZE, 18*TILE_SIZE, TILE_SIZE*1, TILE_SIZE*2, 0,
+      0, TILE_SIZE
+    );
+    slopedWalls.push_back(slopedWall);
+    slopedWall->ceilingTextureID = commonCeilingTextureID;
+    slopedWall->floorTextureID = 4;
+    slopedWall->setThinWallsType(commonThinWallType);
+    appendThinWalls(thinWalls, slopedWall->thinWalls);
+
+    // Floor slope 3
+    slopedWall = new ThickWall();
+    slopedWall->createRectSlope(
+      SLOPE_TYPE_WEST_EAST,
+      7*TILE_SIZE, 12*TILE_SIZE, TILE_SIZE*5, TILE_SIZE, 0,
+      TILE_SIZE, 0
+    );
+    slopedWalls.push_back(slopedWall);
+    slopedWall->ceilingTextureID = commonCeilingTextureID;
+    slopedWall->floorTextureID = 5;
+    slopedWall->setThinWallsType(commonThinWallType);
+    appendThinWalls(thinWalls, slopedWall->thinWalls);
+
+    // Ceiling slope
+    slopedWall = new ThickWall();
+    slopedWall->createRectInvertedSlope(
+      SLOPE_TYPE_NORTH_SOUTH,
+      7*TILE_SIZE, 7*TILE_SIZE, TILE_SIZE, TILE_SIZE*2, TILE_SIZE*1.5,
+      TILE_SIZE, 1
+    );
+    slopedWalls.push_back(slopedWall);
+    slopedWall->ceilingTextureID = commonCeilingTextureID;
+    slopedWall->floorTextureID = 5;
+    slopedWall->setThinWallsType(commonThinWallType);
+    appendThinWalls(thinWalls, slopedWall->thinWalls);
+  }
+
+  if (!rectWall) {
+    rectWall = new ThickWall();
+    rectWall->ceilingTextureID = commonCeilingTextureID;
+    rectWall->floorTextureID = commonFloorTextureID;
+    rectWall->createRectThickWall(
+      18*TILE_SIZE, 17*TILE_SIZE, TILE_SIZE, TILE_SIZE, commonZ, commonHeight
+    );
+    rectWall->setThinWallsType(commonThinWallType);
+    appendThinWalls(thinWalls, rectWall->thinWalls);
+  }
+
+  if (!triangleWall) {
+    triangleWall = new ThickWall();
+    triangleWall->ceilingTextureID = commonCeilingTextureID;
+    triangleWall->floorTextureID = commonFloorTextureID;
+    triangleWall->createTriangleThickWall(
+      Point(rectWall->x - 1.5*TILE_SIZE, rectWall->y),
+      Point(rectWall->x - 0.5*TILE_SIZE, rectWall->y + TILE_SIZE),
+      Point(rectWall->x - 2.5*TILE_SIZE, rectWall->y + TILE_SIZE),
+      commonZ, commonHeight
+    );
+    triangleWall->setThinWallsType(commonThinWallType);
+    appendThinWalls(thinWalls, triangleWall->thinWalls);
+  }
+
+  if (!diamondWall) {
+    diamondWall = new ThickWall();
+    diamondWall->ceilingTextureID = commonCeilingTextureID;
+    diamondWall->floorTextureID = commonFloorTextureID;
+    diamondWall->createQuadThickWall(
+      Point(rectWall->x - 3.5*TILE_SIZE, rectWall->y),
+      Point(rectWall->x - 3*TILE_SIZE, rectWall->y + 0.5*TILE_SIZE),
+      Point(rectWall->x - 3.5*TILE_SIZE, rectWall->y + TILE_SIZE),
+      Point(rectWall->x - 4*TILE_SIZE, rectWall->y + 0.5*TILE_SIZE),
+      commonZ, commonHeight
+    );
+    diamondWall->setThinWallsType(4);
+    appendThinWalls(thinWalls, diamondWall->thinWalls);
+  }
+
+  if (helloWalls.empty()) {
+    float helloCoords[15][6] = {
+      { 4*TILE_SIZE, 18*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+      { 4*TILE_SIZE, 17.80*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 48, 32 },
+      { 4*TILE_SIZE, 17.61*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+      { 4*TILE_SIZE, 17.22*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+      { 4*TILE_SIZE, 16.83*TILE_SIZE, 0.2*TILE_SIZE, 0.39*TILE_SIZE, 0, 25 },
+      { 4*TILE_SIZE, 16.83*TILE_SIZE, 0.2*TILE_SIZE, 0.39*TILE_SIZE, 51, 25 },
+      { 4*TILE_SIZE, 16.83*TILE_SIZE, 0.2*TILE_SIZE, 0.39*TILE_SIZE, 103, 25 },
+      { 4*TILE_SIZE, 16.44*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+      { 4*TILE_SIZE, 16.05*TILE_SIZE, 0.2*TILE_SIZE, 0.39*TILE_SIZE, 0, 25 },
+      { 4*TILE_SIZE, 15.66*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+      { 4*TILE_SIZE, 15.27*TILE_SIZE, 0.2*TILE_SIZE, 0.39*TILE_SIZE, 0, 25 },
+      { 4*TILE_SIZE, 14.88*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+      { 4*TILE_SIZE, 14.68*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 25 },
+      { 4*TILE_SIZE, 14.68*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 103, 25 },
+      { 4*TILE_SIZE, 14.48*TILE_SIZE, 0.2*TILE_SIZE, 0.2*TILE_SIZE, 0, 128 },
+    };
+    for (int i=0; i<15; ++i) {
+      ThickWall* tmpWall = new ThickWall();
+      tmpWall->ceilingTextureID = commonCeilingTextureID;
+      tmpWall->floorTextureID = commonFloorTextureID;
+      tmpWall->createRectThickWall(
+        helloCoords[i][0],
+        helloCoords[i][1],
+        helloCoords[i][2],
+        helloCoords[i][3],
+        helloCoords[i][4],
+        helloCoords[i][5]
+      );
+      helloWalls.push_back( tmpWall );
+      tmpWall->setThinWallsType(4);
+      appendThinWalls(thinWalls, tmpWall->thinWalls);
+    }
+  }
+}
 
 float Game::sine(float f) {
   return sin(f);
@@ -215,63 +444,6 @@ void Game::addProjectile(int textureid, int x, int y, int z, int size,
   s.textureID = textureid;
   s.z = z;
   projectilesQueue.push( s );
-}
-
-Game::Game()
-:frameSkip(0), running(0), window(NULL), renderer(NULL) {
-  srand (time(NULL));
-  drawMiniMapOn = true;
-  skipDrawnFloorStrips = true;
-  skipDrawnSkyboxStrips = true;
-  skipDrawnHighestCeilingStrips = true;
-  drawTexturedFloorOn = true;
-  drawCeilingOn = true;
-  drawWeaponOn = true;
-  drawWallsOn = true;
-  rayHitsCount = 0;
-  fogOn = false;
-  reset();
-}
-
-Game::~Game() {
-  this->stop();
-}
-
-void Game::reset()
-{
-  pitch = 0;
-
-  highestCeilingLevel = 3;
-
-  raycaster3D.createGrids(MAP_WIDTH, MAP_HEIGHT,highestCeilingLevel, TILE_SIZE);
-  array2DToVector(g_map, raycaster3D.grids[0]);
-  array2DToVector(g_map2, raycaster3D.grids[1]);
-  array2DToVector(g_map3, raycaster3D.grids[2]);
-
-  array2DToVector(g_ceilingmap, ceilingGrid);
-
-  player.x = 28 * TILE_SIZE;
-  player.y = 12 * TILE_SIZE;
-  player.z = 0;
-  player.rot = 0;
-  player.moveSpeed = TILE_SIZE / (DESIRED_FPS/60.0f*16);
-  player.rotSpeed = 1.5 * M_PI/180;
-
-  sprites.clear();
-  for (int y=0; y<MAP_HEIGHT; y++) {
-    for (int x=0; x<MAP_WIDTH; x++) {
-      int spriteid = g_spritemap[ y ][ x ];
-      if (spriteid) {
-        addSpriteAt( spriteid, x, y );
-      }
-    }
-  }
-
-  for (int y=0; y<MAP_HEIGHT; ++y) {
-    for (int x=0; x<MAP_WIDTH; ++x) {
-      doors[ x + y * MAP_WIDTH ] = 0;
-    }
-  }
 }
 
 void Game::start() {
@@ -536,11 +708,12 @@ void Game::drawWeapon() {
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "RayHits=%d | FPS=%d | Pos=(%.2f,%.2f,%.2f) | Rot=(%f)",
+    sprintf( szFps, "rayHits=%d FPS=%d Cell=(%d,%d,%d) Rot=(%d deg)",
      rayHitsCount, fps,
-     player.x, player.y, player.z,
-     (float)(player.rot*(180/M_PI))
-      );
+     (int)(player.x/TILE_SIZE), (int)(player.y/TILE_SIZE),
+     (int)(player.z/TILE_SIZE),
+     (int)(player.rot*(180/M_PI))
+    );
     SDL_SetWindowTitle(window, szFps);
 }
 
@@ -594,73 +767,80 @@ void Game::printHelp() {
   printf("Controls:\n"
          "Arrow keys or WASD to move\n"
          "R      - reset player/sprite positions\n"
-         "E      - Open Doors\n"
+         "Enter  - Open Doors\n"
+         "Q      - Strafe Left\n"
+         "E      - Strafe Right\n"
          "LCtrl  - Jump\n"
          "Space  - Shoot\n"
          "PageUp - Look Up\n"
          "PageDn - Look Down\n"
          "M      - Toggle minimap\n"
-         "F      - Toggle textured floors\n"
+         "T      - Toggle textured floors\n"
          "C      - Toggle skybox and ceilings\n"
          "G      - Toggle weapon visibility\n"
-         "5      - Toggle fog\n"
+         "F      - Toggle fog\n"
          "H      - Print this message again\n"
          "See config.ini for more settings.\n"
          "=====================================\n");
 }
 
 void Game::update(float timeElapsed) {
-    if (keys[SDLK_UP] || keys[SDLK_w]) { // up, move player forward
-      player.speed = 1;
-    }
-    else if (keys[SDLK_DOWN] || keys[SDLK_s]) { // down, move player backward
-      player.speed = -1;
-    }
-    else {
-      player.speed = 0; // stop moving
-    }
+  const Uint8* keyboard = SDL_GetKeyboardState(NULL);
 
-    if (keys[SDLK_LEFT] || keys[SDLK_a]) { // left, rotate player left
-      player.dir = -1;
-    }
-    else if (keys[SDLK_RIGHT] || keys[SDLK_d]) { // right, rotate player right
-      player.dir = 1;
-    }
-    else {
-      player.dir = 0; // stop rotating
-    }
+  if (keyboard[SDL_SCANCODE_UP] || keyboard[SDL_SCANCODE_W]) {
+    // up, move player forward
+    player.speed = 1;
+  }
+  else if (keyboard[SDL_SCANCODE_DOWN] || keyboard[SDL_SCANCODE_S]) {
+    // down, move player backward
+    player.speed = -1;
+  }
+  else {
+    player.speed = 0; // stop moving
+  }
 
-    float timeBasedFactor = timeElapsed / UPDATE_INTERVAL;
-    static const float MAX_PITCH = displayHeight/2;
-    const int PITCH_SPEED = 10 * timeBasedFactor;
+  if (keyboard[SDL_SCANCODE_LEFT] || keyboard[SDL_SCANCODE_A]) {
+    // left, rotate player left
+    player.dir = -1;
+  }
+  else if (keyboard[SDL_SCANCODE_RIGHT] || keyboard[SDL_SCANCODE_D]) {
+    // right, rotate player right
+    player.dir = 1;
+  }
+  else {
+    player.dir = 0; // stop rotating
+  }
 
-    if (keys[SDLK_PAGEDOWN]) {
-      pitch -= PITCH_SPEED;
-      if (pitch < -MAX_PITCH) {
-        pitch = -MAX_PITCH;
-      }
-    }
-    else if (keys[SDLK_PAGEUP]) {
-      pitch += PITCH_SPEED;
-      if (pitch > MAX_PITCH) {
-        pitch = MAX_PITCH;
-      }
-    }
-    else if (pitch<0) {
-      pitch += PITCH_SPEED;
-      if (pitch > 0) {
-        pitch = 0;
-      }
-    }
-    else if (pitch>0) {
-      pitch -= PITCH_SPEED;
-      if (pitch < 0) {
-        pitch = 0;
-      }
-    }
+  float timeBasedFactor = timeElapsed / UPDATE_INTERVAL;
+  static const float MAX_PITCH = displayHeight/2;
+  const int PITCH_SPEED = 10 * timeBasedFactor;
 
-    updatePlayer(timeElapsed);
-    updateProjectiles(timeElapsed);
+  if (keyboard[SDL_SCANCODE_PAGEDOWN]) {
+    pitch -= PITCH_SPEED;
+    if (pitch < -MAX_PITCH) {
+      pitch = -MAX_PITCH;
+    }
+  }
+  else if (keyboard[SDL_SCANCODE_PAGEUP]) {
+    pitch += PITCH_SPEED;
+    if (pitch > MAX_PITCH) {
+      pitch = MAX_PITCH;
+    }
+  }
+  else if (pitch<0) {
+    pitch += PITCH_SPEED;
+    if (pitch > 0) {
+      pitch = 0;
+    }
+  }
+  else if (pitch>0) {
+    pitch -= PITCH_SPEED;
+    if (pitch < 0) {
+      pitch = 0;
+    }
+  }
+  updatePlayer(timeElapsed);
+  updateProjectiles(timeElapsed);
 }
 
 void Game::drawMiniMap() {
@@ -687,12 +867,33 @@ void Game::drawMiniMap() {
 }
 
 void Game::updatePlayer(float elapsedTime) {
+  const Uint8 *state = SDL_GetKeyboardState(NULL);
+
   float timeBasedFactor = elapsedTime / UPDATE_INTERVAL;
   float moveStep = player.speed * player.moveSpeed * timeBasedFactor;
   player.rot += -player.dir * player.rotSpeed  * timeBasedFactor;
   float newX = player.x +  cosine(player.rot) * moveStep;
   float newY = player.y + -sine(player.rot) * moveStep;
   float newZ = player.z;
+
+  float strafeMagnitude = 0;
+  float strafeRotation = 0;
+  bool strafeLeft = state[SDL_SCANCODE_Q];
+  bool strafeRight = state[SDL_SCANCODE_E];
+
+  // Strafing left/right is just adding/subtracting 90 degrees to the
+  // player's rotation
+  if (strafeLeft) {
+    strafeMagnitude = player.moveSpeed * timeBasedFactor;
+    strafeRotation  = player.rot + M_PI / 2;
+  }
+  if (strafeRight) {
+    strafeMagnitude = player.moveSpeed * timeBasedFactor;
+    strafeRotation  = player.rot - M_PI / 2;
+  }
+
+  newX += cos(strafeRotation) * strafeMagnitude;
+  newY += -sin(strafeRotation) * strafeMagnitude;
 
   // Jump Logic
   float jumpSpeed = (TILE_SIZE/40) * timeBasedFactor;
@@ -720,10 +921,30 @@ void Game::updatePlayer(float elapsedTime) {
   }
   else {
     newZ -= jumpSpeed;
-    if (newZ<0) {
-      newZ = 0;
+    float slopeHeight = slopeHeightAt(newX, newY);
+    if (newZ<slopeHeight) {
+      newZ = slopeHeight;
       player.jumping = false;
       player.heightJumped = 0;
+    }
+    // New vertical position hits a wall, try to step over it
+    if (playerInWall(newX, newY, newZ)) {
+      float maximumStep = TILE_SIZE/4;
+      int tileZ = newZ / TILE_SIZE;
+      float stepZ = (tileZ+1) * TILE_SIZE;
+      bool stepOK = false;
+      if (!playerInWall(newX, newY, stepZ)) {
+        if (stepZ-player.z <= maximumStep) {
+          newZ = stepZ; // Step success
+          stepOK = true;
+        }
+      }
+      if (!stepOK) {
+        newZ = player.z; // Step failed
+      }
+    }
+    if (newZ < 0) {
+      newZ = 0;
     }
   }
 
@@ -881,6 +1102,35 @@ void Game::updateProjectiles(float timeElapsed) {
   }
 }
 
+float Game::slopeHeightAt(float worldX, float worldY)
+{
+  if (worldX<0 || worldY<0 ||
+      worldX>=TILE_SIZE*MAP_WIDTH || worldY>=TILE_SIZE*MAP_HEIGHT )
+  {
+    return 0.0f;
+  }
+  for (size_t i=0; i<slopedWalls.size(); ++i) {
+    ThickWall* slopedWall = slopedWalls[i];
+    if (slopedWall->containsPoint(worldX, worldY) && !slopedWall->invertedSlope)
+    {
+      float floorX = worldX - slopedWall->x;
+      float floorY = worldY - slopedWall->y;
+      if (slopedWall->slopeType == SLOPE_TYPE_WEST_EAST) {
+        return slopedWall->startHeight + slopedWall->slope * floorX;
+      }
+      if (slopedWall->slopeType == SLOPE_TYPE_NORTH_SOUTH) {
+        return slopedWall->startHeight + slopedWall->slope * floorY;
+      }
+    }
+  }
+  int cellX = worldX / TILE_SIZE;
+  int cellY = worldY / TILE_SIZE;
+  if (raycaster3D.safeCellAt(cellX, cellY, 0, 0)) {
+    return TILE_SIZE;
+  }
+  return 0.0f;
+}
+
 void Game::drawPlayer() {
   SDL_Rect playerRect;
 
@@ -939,7 +1189,7 @@ void Game::drawRay(float rayX, float rayY) {
 
 void Game::drawRays(vector<RayHit>& rayHits) {
    for (int i=0; i<(int)rayHits.size(); ++i) {
-    RayHit rayHit = rayHits[i];
+    RayHit& rayHit = rayHits[i];
     if (rayHit.wallType && rayHit.level==0){
       drawRay(rayHit.x, rayHit.y);
     }
@@ -1000,7 +1250,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
 
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); ++i) {
-    RayHit rayHit = rayHits[i];
+    RayHit& rayHit = rayHits[i];
 
     // Must be a wall, not a sprite
     if (!rayHit.wallType) {
@@ -1052,6 +1302,7 @@ void Game::drawFloor(vector<RayHit>& rayHits)
 
       float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
       float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
+
       xEnd += player.x;
       yEnd += player.y;
       int x = (int)(xEnd*textureRepeat) % TILE_SIZE;
@@ -1119,7 +1370,7 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
 
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   for (int i=0; i<(int)rayHits.size(); i++) {
-    RayHit rayHit = rayHits[i];
+    RayHit& rayHit = rayHits[i];
       // Only draw above furthest wall
     if (!rayHit.wallType) {
       continue;
@@ -1213,7 +1464,7 @@ void Game::drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits)
   drawnCeilingStrips.resize( rayCount + 1 );
 
   for (int i=0; i<(int)rayHits.size(); i++) {
-    RayHit rayHit = rayHits[i];
+    RayHit& rayHit = rayHits[i];
       // Only draw above furthest wall
     if (!rayHit.wallType) {
       continue;
@@ -1324,7 +1575,18 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
   float centerPlane = displayHeight / 2;
   bool wasInWall = false;
   const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
-  for (int screenY=centerPlane; screenY>=0-pitch; screenY--)
+
+  // Older slower loop - render upwards from center plane
+  // for (int screenY=centerPlane; screenY>0-pitch; screenY--)
+  // {
+
+  // Find bottom of wall, and render downwards towards center plane
+  int screenY = (displayHeight-wallScreenHeight)/2 + wallScreenHeight;
+  screenY = screenY - rayHit.level*wallScreenHeight + playerScreenZ - pitch;
+  if (screenY < 0 - pitch ) {
+    screenY = 0 - pitch;
+  }
+  for (; screenY<centerPlane; screenY++)
   {
     float ceilingHeight = TILE_SIZE * (rayHit.level);
     float ratio = (ceilingHeight - eyeHeight) / (centerPlane - screenY);
@@ -1391,7 +1653,18 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
   bool wasInWall = false;
   int screenX = rayHit.strip * stripWidth;
   const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
-  for (int screenY=centerPlane; screenY<displayHeight-pitch; screenY++)
+
+  // Older slower loop, render downwards from center plane
+  // for (int screenY=centerPlane; screenY<displayHeight-pitch; screenY++)
+  // {
+
+  // Find top of wall, and render upwards towards center plane
+  int screenY = (displayHeight-wallScreenHeight)/2;
+  screenY = screenY - rayHit.level * wallScreenHeight + playerScreenZ - pitch;
+  if (screenY > displayHeight - pitch ) {
+    screenY = displayHeight - pitch;
+  }
+  for (; screenY>=centerPlane; screenY--)
   {
     float ratio= (eyeHeight - wallTop) / (screenY-centerPlane);
     float straightDistance = viewDist * ratio;
@@ -1446,6 +1719,450 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
   }
 }
 
+void Game::drawThinWallTop(RayHit& rayHit, int wallScreenHeight)
+{
+  if (!rayHit.thinWall || !rayHit.thinWall->thickWall) {
+    return;
+  }
+
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+  float eyeHeight = TILE_SIZE/2 + player.z;
+  float wallTop = rayHit.thinWall->z + rayHit.thinWall->height;
+  float centerPlane = displayHeight/2;
+  bool wasInWall = false;
+  int screenX = rayHit.strip * stripWidth;
+  const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
+  for (int screenY=centerPlane; screenY<displayHeight-pitch; screenY++)
+  {
+    float ratio= (eyeHeight - wallTop) / (screenY-centerPlane);
+    float straightDistance = viewDist * ratio;
+    float diagonalDistance = straightDistance * cosFactor;
+
+    float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+    float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
+    xEnd += player.x;
+    yEnd += player.y;
+    int x = (int)(xEnd) % TILE_SIZE;
+    int y = (int)(yEnd) % TILE_SIZE;
+
+    int textureID = rayHit.thinWall->thickWall->ceilingTextureID;
+    bool wallTextureExists = textureID < (int)floorCeilingBitmaps.size();
+    bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
+                       y>MAP_HEIGHT*TILE_SIZE;
+    if (outOfBounds || !wallTextureExists) {
+      continue;
+    }
+    if (isinf(xEnd) || isinf(yEnd)) {
+      continue;
+    }
+    if (!rayHit.thinWall->thickWall->containsPoint(xEnd,yEnd)) {
+      if (wasInWall) {
+        return;
+      }
+      continue;
+    }
+    Bitmap& bitmap = floorCeilingBitmaps[ textureID ];
+    Uint32* pix = (Uint32*)bitmap.getPixels();
+    if (!pix) {
+      continue;
+    }
+    int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+    int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
+    int dstPixel = screenX + (screenY+pitch) * displayWidth;
+    int srcPixel = textureY * bitmap.getWidth() + textureX;
+    bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                   srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                   dstPixel<displayWidth*displayHeight;
+    if (pixelOK) {
+      wasInWall = true;
+      switch (stripWidth) {
+        case 4:
+          screenPixels[dstPixel+3] = pix[srcPixel];
+        case 3:
+          screenPixels[dstPixel+2] = pix[srcPixel];
+        case 2:
+          screenPixels[dstPixel+1] = pix[srcPixel];
+        default:
+          screenPixels[dstPixel] = pix[srcPixel];
+          break;
+      }
+    }
+  }
+}
+
+void Game::drawThinWallBottom(RayHit& rayHit, int wallScreenHeight)
+{
+  if (!rayHit.thinWall || !rayHit.thinWall->thickWall) {
+    return;
+  }
+
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+  float eyeHeight = TILE_SIZE/2 + player.z;
+  float wallBottom = rayHit.thinWall->z;
+  float centerPlane = displayHeight/2;
+  bool wasInWall = false;
+  int screenX = rayHit.strip * stripWidth;
+  const float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
+  for (int screenY=centerPlane; screenY>=0-pitch; screenY--)
+  {
+    float ratio = (wallBottom - eyeHeight) / (centerPlane - screenY);
+    float straightDistance = viewDist * ratio;
+    float diagonalDistance = straightDistance * cosFactor;
+
+    float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+    float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
+    xEnd += player.x;
+    yEnd += player.y;
+    int x = (int)(xEnd) % TILE_SIZE;
+    int y = (int)(yEnd) % TILE_SIZE;
+
+    int textureID = rayHit.thinWall->thickWall->floorTextureID;
+    bool wallTextureExists = textureID < (int)floorCeilingBitmaps.size();
+    bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
+                       y>MAP_HEIGHT*TILE_SIZE;
+    if (outOfBounds || !wallTextureExists) {
+      continue;
+    }
+    if (isinf(xEnd) || isinf(yEnd)) {
+      continue;
+    }
+    if (!rayHit.thinWall->thickWall->containsPoint(xEnd,yEnd)) {
+      if (wasInWall) {
+        return;
+      }
+      continue;
+    }
+    Bitmap& bitmap = floorCeilingBitmaps[ textureID ];
+    Uint32* pix = (Uint32*)bitmap.getPixels();
+    if (!pix) {
+      continue;
+    }
+    int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+    int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
+    int dstPixel = screenX + (screenY+pitch) * displayWidth;
+    int srcPixel = textureY * bitmap.getWidth() + textureX;
+    bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                   srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                   dstPixel<displayWidth*displayHeight;
+    if (pixelOK) {
+      wasInWall = true;
+      switch (stripWidth) {
+        case 4:
+          screenPixels[dstPixel+3] = pix[srcPixel];
+        case 3:
+          screenPixels[dstPixel+2] = pix[srcPixel];
+        case 2:
+          screenPixels[dstPixel+1] = pix[srcPixel];
+        default:
+          screenPixels[dstPixel] = pix[srcPixel];
+          break;
+      }
+    }
+  }
+}
+
+bool Game::drawSlope(RayHit& rayHit)
+{
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+  RayHit sibling;
+
+  // No siblings means player is inside the slope. The sibling is behind
+  // the player, so we do a backwards raycast to find it.
+  if (rayHit.siblingDistance == 0) {
+    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall, thinWalls,
+                                       rayHit.rayAngle-M_PI, player.rot,
+                                       rayHit.strip, player.x, player.y,
+                                       player.x, player.y))
+    {
+      // Sibling distance to player is negated because it is behind.
+      sibling.correctDistance = -sibling.distance;
+      rayHit.copySibling(sibling);
+    }
+  }
+
+  // Only draw slope if current wall is further than sibling wall
+  if (!rayHit.siblingDistance ||
+       rayHit.correctDistance < rayHit.siblingCorrectDistance) {
+    return false;
+  }
+
+  // Cross section values of current strip
+  float farWallX = rayHit.correctDistance;
+  float farWallY = rayHit.thinWall->z + rayHit.wallHeight;
+  float nearWallX = rayHit.siblingCorrectDistance;
+  float nearWallY = rayHit.siblingThinWallZ + rayHit.siblingWallHeight;
+  float eyeX = 0; // relative to player eye, so always 0
+  float eyeY = TILE_SIZE/2 + player.z;
+
+  float centerPlane = displayHeight / 2;
+  float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
+  float screenX = rayHit.strip * stripWidth;
+  float wasInWall = false; // used to stop drawing early
+
+  SDL_Rect rc = stripScreenRect(rayHit, rayHit.wallHeight);
+  float screenY = rc.y;
+  if (rc.y < 0-pitch) {
+    screenY = 0-pitch;
+  }
+
+  // Raycast vertically from top to bottom to find slope intersection
+  for (; screenY<displayHeight-pitch; screenY++) {
+    float wallTop = 0;
+    bool hitSlope = false;
+
+    // Angle is below eye
+    float divisor = screenY-centerPlane;
+    if (screenY >= centerPlane ) {
+      float dy = screenY - centerPlane;
+      if (dy==0) {
+        dy = screenY+1 - centerPlane;
+        divisor = screenY+1 - centerPlane;
+      }
+      float angle = atan( dy / viewDist );
+      float floorX = eyeY / tan( angle );
+      float floorY = 0; // should always be 0
+      Point hit;
+      hitSlope = Shape::linesIntersect(
+        eyeX, eyeY, floorX, floorY,
+        farWallX, farWallY, nearWallX, nearWallY,
+        &hit.x, &hit.y
+      );
+      if (hitSlope) {
+        wallTop = hit.y;
+      }
+    }
+    // Angle is above eye
+    else {
+      float dy = centerPlane - screenY;
+      float angle = atan( dy / viewDist );
+      float ceilingY = TILE_SIZE*99; // imaginary high ceiling
+      float ceilingX = ceilingY / tan( angle  );
+      Point hit;
+      hitSlope = Shape::linesIntersect(
+        eyeX, eyeY, ceilingX, ceilingY,
+        farWallX, farWallY, nearWallX, nearWallY,
+        &hit.x, &hit.y
+      );
+      if (hitSlope) {
+        wallTop = hit.y;
+      }
+    }
+
+    if (!hitSlope) {
+      if (wasInWall) {
+        return true;
+      }
+      continue;
+    }
+
+    float ratio = (eyeY - wallTop) / divisor;
+    float straightDistance = viewDist * ratio;
+    float diagonalDistance = straightDistance * cosFactor;
+
+    float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+    float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
+    if (isinf(xEnd) || isinf(yEnd)) {
+      if (wasInWall) {
+        return true;
+      }
+      continue;
+    }
+    xEnd += player.x;
+    yEnd += player.y;
+    int x = (int)(xEnd) % TILE_SIZE;
+    int y = (int)(yEnd) % TILE_SIZE;
+
+    int textureID = rayHit.thinWall->thickWall->floorTextureID;
+    bool wallTextureExists = textureID < (int)floorCeilingBitmaps.size();
+    bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
+                       y>MAP_HEIGHT*TILE_SIZE;
+    if (outOfBounds || !wallTextureExists) {
+      if (wasInWall) {
+        return true;
+      }
+      continue;
+    }
+
+    Bitmap& bitmap = floorCeilingBitmaps[ textureID ];
+    Uint32* pix = (Uint32*)bitmap.getPixels();
+    if (!pix) {
+      continue;
+    }
+    int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+    int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
+    int dstPixel = screenX + (screenY+pitch) * displayWidth;
+    int srcPixel = textureY * bitmap.getWidth() + textureX;
+    bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                   srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                   dstPixel<displayWidth*displayHeight;
+    if (pixelOK) {
+      wasInWall = true;
+      switch (stripWidth) {
+        case 4:
+          screenPixels[dstPixel+3] = pix[srcPixel];
+        case 3:
+          screenPixels[dstPixel+2] = pix[srcPixel];
+        case 2:
+          screenPixels[dstPixel+1] = pix[srcPixel];
+        default:
+          screenPixels[dstPixel] = pix[srcPixel];
+          break;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool Game::drawSlopeInverted(RayHit& rayHit)
+{
+  Uint32* screenPixels = (Uint32*) screenSurface->pixels;
+
+  RayHit sibling;
+
+  // No siblings means player is inside the slope. The sibling is behind
+  // the player, so we do a backwards raycast to find it.
+  if (rayHit.siblingDistance == 0) {
+    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall, thinWalls,
+                                       rayHit.rayAngle-M_PI, player.rot,
+                                       rayHit.strip, player.x, player.y,
+                                       player.x, player.y))
+    {
+      // Sibling distance to player is negated because it is behind.
+      sibling.correctDistance = -sibling.distance;
+      rayHit.copySibling(sibling);
+    }
+  }
+
+  // Only draw slope if current wall is further than sibling wall
+  if (!rayHit.siblingDistance ||
+       rayHit.correctDistance < rayHit.siblingCorrectDistance) {
+    return false;
+  }
+
+  // Cross section values of current strip
+  float farWallX = rayHit.correctDistance;
+  float farWallY = rayHit.thinWall->z + rayHit.invertedZ;
+  float nearWallX = rayHit.siblingCorrectDistance;
+  float nearWallY = rayHit.siblingThinWallZ + rayHit.siblingInvertedZ;
+  float eyeX = 0;
+  float eyeY = TILE_SIZE/2 + player.z;
+
+  float centerPlane = displayHeight / 2;
+  float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
+  float wasInWall = false;
+  float screenX = rayHit.strip * stripWidth;
+  float screenY = 0-pitch;
+  for (; screenY<displayHeight-pitch; screenY++) {
+    float wallTop = 0;
+    bool hitSlope = false;
+
+    // Angle is below eye
+    float divisor = screenY-centerPlane;
+    if (screenY >= centerPlane ) {
+      float dy = screenY - centerPlane;
+      if (dy==0) {
+        dy = screenY+1 - centerPlane;
+        divisor = screenY+1 - centerPlane;
+      }
+      float angle = atan( dy / viewDist );
+      float floorX = eyeY / tan( angle );
+      float floorY = 0; // should always be 0
+      Point hit;
+      hitSlope = Shape::linesIntersect(
+        eyeX, eyeY, floorX, floorY,
+        farWallX, farWallY, nearWallX, nearWallY,
+        &hit.x, &hit.y
+      );
+      if (hitSlope) {
+        wallTop = hit.y;
+      }
+    }
+    // Angle is above eye
+    else {
+      float dy = centerPlane - screenY;
+      float angle = atan( dy / viewDist );
+      float ceilingY = TILE_SIZE*99; // imaginary high ceiling
+      float ceilingX = ceilingY / tan( angle  );
+      Point hit;
+      hitSlope = Shape::linesIntersect(
+        eyeX, eyeY, ceilingX, ceilingY,
+        farWallX, farWallY, nearWallX, nearWallY,
+        &hit.x, &hit.y
+      );
+      if (hitSlope) {
+        wallTop = hit.y;
+      }
+    }
+
+    if (!hitSlope) {
+      if (wasInWall) {
+        return true;
+      }
+      continue;
+    }
+
+    float ratio = (eyeY - wallTop) / divisor;
+    float straightDistance = viewDist * ratio;
+    float diagonalDistance = straightDistance * cosFactor;
+
+    float xEnd = (diagonalDistance *  cosine(rayHit.rayAngle));
+    float yEnd = (diagonalDistance * -sine(rayHit.rayAngle));
+
+    if (isinf(xEnd) || isinf(yEnd)) {
+      if (wasInWall) {
+        return true;
+      }
+      continue;
+    }
+
+    xEnd += player.x;
+    yEnd += player.y;
+    int x = (int)(xEnd) % TILE_SIZE;
+    int y = (int)(yEnd) % TILE_SIZE;
+
+    int textureID = rayHit.thinWall->thickWall->ceilingTextureID;
+    bool wallTextureExists = textureID < (int)floorCeilingBitmaps.size();
+    bool outOfBounds = x < 0 || y < 0 || x>MAP_WIDTH*TILE_SIZE ||
+                       y>MAP_HEIGHT*TILE_SIZE;
+    if (outOfBounds || !wallTextureExists) {
+      if (wasInWall) {
+        return true;
+      }
+      continue;
+    }
+
+    Bitmap& bitmap = floorCeilingBitmaps[ textureID ];
+    Uint32* pix = (Uint32*)bitmap.getPixels();
+    if (!pix) {
+      continue;
+    }
+    int textureX = (float) x / TILE_SIZE * TEXTURE_SIZE;
+    int textureY = (float) y / TILE_SIZE * TEXTURE_SIZE;
+    int dstPixel = screenX + (screenY+pitch) * displayWidth;
+    int srcPixel = textureY * bitmap.getWidth() + textureX;
+    bool pixelOK = srcPixel>=0 && dstPixel>=0 &&
+                   srcPixel<bitmap.getWidth()*bitmap.getHeight() &&
+                   dstPixel<displayWidth*displayHeight;
+    if (pixelOK) {
+      wasInWall = true;
+      switch (stripWidth) {
+        case 4:
+          screenPixels[dstPixel+3] = pix[srcPixel];
+        case 3:
+          screenPixels[dstPixel+2] = pix[srcPixel];
+        case 2:
+          screenPixels[dstPixel+1] = pix[srcPixel];
+        default:
+          screenPixels[dstPixel] = pix[srcPixel];
+          break;
+      }
+    }
+  }
+
+  return true;
+}
+
 void Game::drawWorld(vector<RayHit>& rayHits)
 {
   RayHitSorter rayHitSorter(&raycaster3D, TILE_SIZE/2+player.z);
@@ -1462,7 +2179,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
   }
 
   for (int i=0; i<(int)rayHits.size(); ++i) {
-    RayHit rayHit = rayHits[i];
+    RayHit& rayHit = rayHits[i];
 
     // Wall
     if (rayHit.wallType) {
@@ -1480,15 +2197,18 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       float sy = TEXTURE_SIZE * (rayHit.wallType-1);
       bool wallAboveWall = false;
       bool wallBelowWall = false;
-      if (rayHit.level) {
-        int wallBelow = raycaster3D.cellAt(rayHit.wallX, rayHit.wallY,
-                                           rayHit.level-1);
-        wallAboveWall = wallBelow && !Raycaster::isDoor(wallBelow);
+      if (!rayHit.thinWall) {
+        if (rayHit.level) {
+          int wallBelow = raycaster3D.cellAt(rayHit.wallX, rayHit.wallY,
+                                             rayHit.level-1);
+          wallAboveWall = wallBelow && !Raycaster::isDoor(wallBelow);
+        }
+        wallBelowWall= raycaster3D.safeCellAt(rayHit.wallX,rayHit.wallY,
+                                              rayHit.level+1);
       }
-      wallBelowWall= raycaster3D.safeCellAt(rayHit.wallX,rayHit.wallY,
-                                            rayHit.level+1);
 
       SurfaceTexture* img = rayHit.horizontal ? &wallsImageDark : &wallsImage;
+
       //------------------------------------------------------------------------
       // Corner Checking Start
       //
@@ -1509,7 +2229,7 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       // But a large TILE_SIZE seems to cause frame drops because many
       // modulus (%) operations use TILE_SIZE.
       //------------------------------------------------------------------------
-      bool cornerCheck = true;
+      bool cornerCheck = !rayHit.thinWall && true;
       int sxi = (int) sx;
       bool isLeftEdge = sxi==0;
       bool isRightEdge = sxi == TEXTURE_SIZE-1;
@@ -1551,23 +2271,60 @@ void Game::drawWorld(vector<RayHit>& rayHits)
                                                            &gatesImage;
       }
 
+      bool isSlope = rayHit.thinWall && rayHit.thinWall->thickWall &&
+                     rayHit.thinWall->thickWall->slope;
+
       // Draw the wall
-      drawWallStrip(rayHit,*img,sx,sy, wallScreenHeight,
-                    wallAboveWall, wallBelowWall);
+      if (isSlope) {
+        drawSlopeStrip(rayHit,*img,sx,sy);
+        if (rayHit.thinWall->thickWall->invertedSlope) {
+          drawSlopeInverted(rayHit);
+        }
+        else {
+          drawSlope(rayHit);
+        }
+      }
+      else if (rayHit.thinWall) {
+        drawThinWallStrip(rayHit,*img,sx,sy,wallAboveWall, wallBelowWall);
+      }
+      else {
+        if (!ignoreWallStrip(rayHit)) {
+          drawWallStrip(rayHit,*img,sx,sy, wallScreenHeight,
+                      wallAboveWall, wallBelowWall);
+        }
+      }
 
       // Draw top/bottom faces of wall if player's eye is below/above the wall
       // and no other wall is directly above/below it.
       float eyeHeight  = TILE_SIZE/2 + player.z;
       float wallBottom = rayHit.level * TILE_SIZE;
       float wallTop    = wallBottom + TILE_SIZE;
+      if (rayHit.thinWall) {
+        wallBottom = rayHit.thinWall->z ;
+        wallTop = rayHit.thinWall->z + rayHit.thinWall->height;
+      }
       if (eyeHeight<wallBottom && !wallAboveWall) {
         if (drawCeilingOn) {
-          drawWallBottom(rayHit, wallScreenHeight, playerScreenZ);
+          if (rayHit.thinWall && rayHit.thinWall->thickWall) {
+            if (!isSlope) {
+              drawThinWallBottom(rayHit, wallScreenHeight);
+            }
+          }
+          else {
+            drawWallBottom(rayHit, wallScreenHeight, playerScreenZ);
+          }
         }
       }
       else if (eyeHeight>wallTop && !wallBelowWall) {
         if (drawTexturedFloorOn) {
-          drawWallTop(rayHit, wallScreenHeight, playerScreenZ);
+          if (rayHit.thinWall && rayHit.thinWall->thickWall) {
+            if (!isSlope) {
+              drawThinWallTop(rayHit, wallScreenHeight);
+            }
+          }
+          else {
+            drawWallTop(rayHit, wallScreenHeight, playerScreenZ);
+          }
         }
       }
 
@@ -1587,6 +2344,125 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       SDL_BlitScaled(spriteSurfaceTexture->getSurface(), NULL, screenSurface,
                      &dstRect);
     }
+  }
+}
+
+float Game::wallScreenY(RayHit&rayHit, float wallHeight)
+{
+  float defaultWallScreenHeight =
+    Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance, TILE_SIZE);
+  float wallScreenHeight =
+    Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance, wallHeight);
+
+  float y = ((displayHeight - defaultWallScreenHeight)/2);
+  if (wallHeight != TILE_SIZE) {
+    y += (defaultWallScreenHeight - wallScreenHeight);
+  }
+  if (rayHit.thinWall && rayHit.thinWall->z) {
+    y -= Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance,
+                                      rayHit.thinWall->z);
+  }
+  return y;
+}
+
+SDL_Rect Game::stripScreenRect(RayHit& rayHit, float wallHeight)
+{
+  // Height of 1 tile
+  float defaultWallScreenHeight =
+    Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance, TILE_SIZE);
+
+  // Height of the wall
+  float wallScreenHeight = wallHeight==TILE_SIZE
+    ? defaultWallScreenHeight
+    : Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance,wallHeight);
+
+  // Clamp height because SDL_Rect uses short int
+  static const float MAX_WALL_HEIGHT = SDL_MAX_SINT16;
+  if (defaultWallScreenHeight > MAX_WALL_HEIGHT) {
+    defaultWallScreenHeight = MAX_WALL_HEIGHT;
+  }
+  if (wallScreenHeight > MAX_WALL_HEIGHT) {
+    wallScreenHeight = MAX_WALL_HEIGHT;
+  }
+
+  SDL_Rect rc;
+  rc.x = rayHit.strip * stripWidth;
+  rc.w = stripWidth;
+  rc.h = wallScreenHeight;
+  rc.y = (displayHeight-defaultWallScreenHeight)/2 +
+         (defaultWallScreenHeight-wallScreenHeight);
+
+  // Thin wall is not lying on the ground
+  if (rayHit.thinWall && rayHit.thinWall->z) {
+    rc.y -= Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance,
+                                         rayHit.thinWall->z);
+  }
+  // The wall is part of an inverted slope
+  if (rayHit.thinWall && rayHit.thinWall->thickWall &&
+      rayHit.thinWall->thickWall->invertedSlope)
+  {
+    rc.y -= Raycaster::stripScreenHeight(viewDist, rayHit.correctDistance,
+                                         rayHit.invertedZ);
+  }
+  return rc;
+}
+
+
+void Game::drawSlopeStrip(RayHit& rayHit, SurfaceTexture& img,
+                          float textureX, float textureY)
+{
+  drawThinWallStrip(rayHit, img, textureX, textureY, false, false);
+}
+
+void Game::drawThinWallStrip(RayHit& rayHit, SurfaceTexture& img,
+                             float textureX, float textureY,
+                             bool aboveWall, bool beloWall)
+{
+  static const float MAX_WALL_HEIGHT = SDL_MAX_SINT16;
+
+  float playerScreenZ = 0;
+  if (player.z) {
+    playerScreenZ = Raycaster::stripScreenHeight(viewDist,
+                                                 rayHit.correctDistance,
+                                                 player.z);
+  }
+
+  float heightToDraw = TILE_SIZE;
+  float dstY = 0;
+  float heightDrawn=0;
+  for (; heightDrawn<rayHit.wallHeight; heightDrawn+=heightToDraw) {
+    float heightRemaining = rayHit.wallHeight - heightDrawn;
+    if (heightRemaining < TILE_SIZE) {
+      heightToDraw = heightRemaining;
+    }
+
+    SDL_Rect srcrect;
+    srcrect.x = textureX;
+    srcrect.y = textureY;
+    srcrect.w = 1;
+    srcrect.h = (heightToDraw/TILE_SIZE) * TEXTURE_SIZE;
+
+    SDL_Rect dstrect = stripScreenRect(rayHit, heightToDraw);
+    if (heightDrawn == 0) {
+      dstY = dstrect.y + playerScreenZ + pitch;
+    }
+    else {
+      dstY -= dstrect.h;
+    }
+    dstrect.y = dstY;
+
+    // Hack: Make thick walls longer hide seams and tears caused by ceiling
+    // drawing
+    if (rayHit.thinWall->thickWall) {
+      dstrect.y--;
+      dstrect.h+=3;
+    }
+
+    if (dstrect.h > MAX_WALL_HEIGHT) {
+      continue;
+    }
+
+    SDL_BlitScaled(img.getSurface(), &srcrect, screenSurface, &dstrect);
   }
 }
 
@@ -1612,26 +2488,17 @@ void Game::drawWallStrip(RayHit& rayHit, SurfaceTexture& img,
     }
   }
 
-  float sx = textureX;
-  float sy = textureY;
-  float swidth = 1;
-  float sheight = TEXTURE_SIZE;
-  float imgx = rayHit.strip * stripWidth;
-  float imgy = (displayHeight-wallScreenHeight) / 2 + playerScreenZ + pitch;
-  float imgw = stripWidth;
-  float imgh = wallScreenHeight;
-
   SDL_Rect srcrect;
-  srcrect.x = sx;
-  srcrect.y = sy;
-  srcrect.w = swidth;
-  srcrect.h = sheight;
+  srcrect.x = textureX;
+  srcrect.y = textureY;
+  srcrect.w = 1;
+  srcrect.h = TEXTURE_SIZE;
 
   SDL_Rect dstrect;
-  dstrect.x = imgx;
-  dstrect.y = imgy;
-  dstrect.w = imgw;
-  dstrect.h = imgh;
+  dstrect.x = rayHit.strip * stripWidth;
+  dstrect.w = stripWidth;
+  dstrect.h = wallScreenHeight;
+  dstrect.y = (displayHeight-wallScreenHeight)/2 + playerScreenZ + pitch;
 
   // Hack: Make the highest blocks and walls with space below/above them
   // slightly taller to hide seams and tears caused by ceiling drawing
@@ -1651,6 +2518,16 @@ void Game::drawWallStrip(RayHit& rayHit, SurfaceTexture& img,
     dstrect.y -= wallScreenHeight;
     SDL_BlitScaled(img.getSurface(), &srcrect, screenSurface, &dstrect);
   }
+}
+
+bool Game::ignoreWallStrip(RayHit& rayHit)
+{
+  // This particular wall side facing north beside one of the slopes
+  // should never be visible. If we don't hide it, sometimes parts of it will
+  // "poke" through the slope
+  bool nextToSlope = rayHit.wallX == 11 && rayHit.wallY == 20 &&
+                     rayHit.horizontal && player.y < 20*TILE_SIZE;
+  return nextToSlope;
 }
 
 // Algorithm here taken from this link but I use unit circle rotation instead.
@@ -1712,6 +2589,9 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
     raycaster3D.raycast(rayHits, player.x, player.y, player.z, player.rot,
                         stripAngle, strip, &sprites);
 
+    raycaster3D.raycastThinWalls(rayHits, this->thinWalls,
+                                 player.x, player.y, player.z, player.rot,
+                                 stripAngle, strip);
   }
   rayHitsCount = rayHits.size();
 }
@@ -1813,12 +2693,11 @@ bool Game::playerInWall(float playerX, float playerY, float playerZ) {
 }
 
 void Game::onKeyDown( SDL_Event* evt ) {
-    keys[ evt->key.keysym.sym ] = 1 ;
 }
 
 void Game::onKeyUp( SDL_Event* evt ) {
-    keys[ evt->key.keysym.sym ] = 0 ;
-    switch(evt->key.keysym.sym) {
+    int sym = evt->key.keysym.sym;
+    switch(sym) {
       case SDLK_m: {
         drawMiniMapOn = !drawMiniMapOn;
         printf("drawMiniMapOn = %s\n", drawMiniMapOn?"true":"false");
@@ -1835,7 +2714,7 @@ void Game::onKeyUp( SDL_Event* evt ) {
         printf("Game reset!\n");
         break;
       }
-      case SDLK_f: {
+      case SDLK_t: {
         drawTexturedFloorOn = !drawTexturedFloorOn;
         printf("drawTexturedFloorOn = %s\n",drawTexturedFloorOn?"true":"false");
         break;
@@ -1843,6 +2722,11 @@ void Game::onKeyUp( SDL_Event* evt ) {
       case SDLK_c: {
         drawCeilingOn = !drawCeilingOn;
         printf("drawCeilingOn = %s\n", drawCeilingOn?"true":"false");
+        break;
+      }
+      case SDLK_f: {
+        fogOn = !fogOn;
+        printf("fogOn = %s\n", fogOn?"true":"false");
         break;
       }
       case SDLK_1: {
@@ -1868,17 +2752,12 @@ void Game::onKeyUp( SDL_Event* evt ) {
                skipDrawnHighestCeilingStrips?"true":"false");
         break;
       }
-      case SDLK_5: {
-        fogOn = !fogOn;
-        printf("fogOn = %s\n",
-               fogOn?"true":"false");
-        break;
-      }
       case SDLK_h: {
         printHelp();
         break;
       }
-      case SDLK_e: {
+      case SDLK_RETURN2:
+      case SDLK_RETURN: {
         toggleDoorPressed();
         break;
       }
