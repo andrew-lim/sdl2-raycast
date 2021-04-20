@@ -21,7 +21,7 @@ Download the [Windows demo here](https://github.com/andrew-lim/sdl2-raycast/rele
 </table>
 
 ## Building
-I highly recommending compiling with some kind of optimization enabled. For Dev-C++ I used the `-O2` flag.
+I highly recommending compiling with some kind of optimization enabled.  For Dev-C++ I use the `-O2` flag. The `-03` flag also works if `-fno-tree-vectorize` is specified as well.
 
 You will need SDL2 and SDL2_mixer.
 

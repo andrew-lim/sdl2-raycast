@@ -1,6 +1,6 @@
 /*
 Andrew Lim's C++ Raycasting Engine
-https://github.com/andrew-lim/
+https://github.com/andrew-lim/sdl2-raycast
 */
 #ifndef ANDREW_LIM_RAYCASTING_H
 #define ANDREW_LIM_RAYCASTING_H
@@ -288,6 +288,21 @@ public:
                           float originAngle, float playerRot,
                           int stripIdx, float playerX, float playerY,
                           float rayStartX, float rayStartY);
+
+  findIntersectingSprites(std::vector<RayHit>& rayHits,
+                          std::vector<Sprite>& spritesToLookFor,
+                          float playerX,
+                          float playerY,
+                          float rayEndX,
+                          float rayEndY);
+
+  static void raycastSprites(std::vector<RayHit>& hits,
+                             std::vector< std::vector<int> >& grids,
+                             int gridWidth, int gridHeight, int tileSize,
+                             int playerX, int playerY, float playerZ,
+                             float playerRot,
+                             float stripAngle, int stripIdx,
+                             std::vector<Sprite>* spritesToLookFor);
 };
 
 /**

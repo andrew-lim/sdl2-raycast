@@ -1,13 +1,15 @@
 /*
 SDL2 raycasting demo.
 Author: Andrew Lim Chong Liang
-https://github.com/andrew-lim
+https://github.com/andrew-lim/sdl2-raycast
 
 Linker settings
 -lmingw32 -lSDL2main -lSDL2 -lSDL2_mixer
 
 Recommended compiler settings
 -Wall -pedantic -O2
+OR
+-Wall -pedantic -O3 -fno-tree-vectorize
 */
 #include <SDL.h>
 #include <SDL_mixer.h>
@@ -2587,11 +2589,17 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
     float screenX = (rayCount/2 - strip) * stripWidth;
     const float stripAngle = Raycaster::stripAngle(screenX, viewDist);
     raycaster3D.raycast(rayHits, player.x, player.y, player.z, player.rot,
-                        stripAngle, strip, &sprites);
+                        stripAngle, strip, 0);
 
     raycaster3D.raycastThinWalls(rayHits, this->thinWalls,
                                  player.x, player.y, player.z, player.rot,
                                  stripAngle, strip);
+
+    raycaster3D.raycastSprites(rayHits,
+                               raycaster3D.grids,
+                               raycaster3D.gridWidth, raycaster3D.gridHeight, TILE_SIZE,
+                               player.x, player.y, player.z, player.rot,
+                               stripAngle, strip, &sprites);
   }
   rayHitsCount = rayHits.size();
 }

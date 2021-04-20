@@ -636,7 +636,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
     //----------------------------------------
     vector<Sprite*> spritesHit;
 
-    if (spritesToLookFor && level==0) {
+    if (spritesToLookFor) {
       vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
                                                         currentTileX,
                                                         currentTileY,
@@ -694,7 +694,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       int wallOffset = wallX + wallY * gridWidth;
 
       // Look for sprites in current cell
-      if (spritesToLookFor&&level==0) {
+      if (spritesToLookFor) {
         vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
                                                           wallX, wallY,
                                                           tileSize );
@@ -819,7 +819,7 @@ void Raycaster::raycast(vector<RayHit>& hits,
       int wallOffset = wallX + wallY * gridWidth;
 
       // Look for sprites in current cell
-      if (spritesToLookFor&&level==0) {
+      if (spritesToLookFor) {
         vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
                                                           wallX, wallY,
                                                           tileSize );
@@ -1113,4 +1113,181 @@ bool Raycaster::findSiblingAtAngle(RayHit& sibling,
     }
   }
   return false;
+}
+
+void Raycaster::raycastSprites(vector<RayHit>& hits,
+                               vector< vector<int> >& grids,
+                               int gridWidth, int gridHeight, int tileSize,
+                               int playerX, int playerY, float playerZ,
+                               float playerRot,
+                               float stripAngle, int stripIdx,
+                               vector<Sprite>* spritesToLookFor)
+{
+  if (grids.empty()) {
+    return;
+  }
+
+  float rayAngle = stripAngle + playerRot;
+  const float TWO_PI = M_PI*2;
+  while (rayAngle < 0) rayAngle += TWO_PI;
+  while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
+
+  bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
+              (rayAngle>TWO_PI*0.75); // Quadrant 4
+  bool up    = rayAngle<TWO_PI*0.5  && rayAngle>=0; // Quadrant 1 and 2
+
+  std::vector<int>& groundGrid = grids[0];
+
+  int currentTileX = playerX / tileSize;
+  int currentTileY = playerY / tileSize;
+
+  //----------------------------------------
+  // Check player's current tile for sprites
+  //----------------------------------------
+  vector<Sprite*> spritesHit;
+
+  vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
+                                                    currentTileX,
+                                                    currentTileY,
+                                                    tileSize );
+  for (size_t i=0; i<spritesFound.size(); ++i) {
+    Sprite* sprite = spritesFound[ i ];
+    if (!sprite->rayhit) {
+      const float distX = playerX - sprite->x;
+      const float distY = playerY - sprite->y;
+      const float blockDist = distX*distX + distY*distY;
+      if (blockDist) {
+        sprite->rayhit = true;
+        sprite->distance = sqrt(blockDist);
+        spritesHit.push_back(sprite);
+      }
+    }
+  }
+
+  //--------------------------
+  // Vertical Lines Checking
+  //--------------------------
+  RayHit verticalWallHit;
+
+  // Find x coordinate of vertical lines on the right and left
+  float vx = 0;
+  if (right) {
+    vx = floor(playerX/tileSize) * tileSize + tileSize;
+  }
+  else {
+    vx = floor(playerX/tileSize) * tileSize - 1;
+  }
+
+  // Calculate y coordinate of those lines
+  // lineY = playerY + (playerX-lineX)*tan(ALPHA);
+  float vy = playerY + (playerX-vx)*tan(rayAngle);
+
+  // Calculate stepping vector for each line
+  float stepx = right ? tileSize : -tileSize;
+  float stepy = tileSize * tan(rayAngle);
+
+  // tan() returns positive values in Quadrant 1 and Quadrant 4 but window
+  // coordinates need negative coordinates for Y-axis so we reverse
+  if ( right ) {
+    stepy = -stepy;
+  }
+
+  while (vx>=0 && vx<gridWidth*tileSize && vy>=0 && vy<gridHeight*tileSize) {
+    int wallY = floor(vy / tileSize);
+    int wallX = floor(vx / tileSize);
+
+    // Look for sprites in current cell
+    vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
+                                                      wallX, wallY,
+                                                      tileSize );
+    for (size_t i=0; i<spritesFound.size(); ++i) {
+      Sprite* sprite = spritesFound[ i ];
+      if (!sprite->rayhit) {
+        const float distX = playerX - sprite->x;
+        const float distY = playerY - sprite->y;
+        const float blockDist = distX*distX + distY*distY;
+        sprite->distance = sqrt(blockDist);
+        spritesHit.push_back(sprite);
+
+        RayHit spriteRayHit(vx, vy, rayAngle);
+        spriteRayHit.strip = stripIdx;
+        if (sprite->distance) {
+          spriteRayHit.distance = sprite->distance;
+          spriteRayHit.correctDistance = spriteRayHit.distance *
+                                          cos(stripAngle);
+        }
+        spriteRayHit.wallType = 0;
+        spriteRayHit.sprite = sprite;
+        spriteRayHit.level = sprite->level;
+        spriteRayHit.distance = sprite->distance;
+        sprite->rayhit = true;
+        hits.push_back( spriteRayHit );
+      }
+    }
+
+    vx += stepx;
+    vy += stepy;
+  }
+
+  //--------------------------
+  // Horizontal Lines Checking
+  //--------------------------
+
+  // Find y coordinate of horizontal lines on the right and left
+  float hy = 0;
+  if (up) {
+    hy = floor(playerY/tileSize) * tileSize - 1;
+  }
+  else {
+    hy = floor(playerY/tileSize) * tileSize + tileSize;
+  }
+
+  // Calculation x coordinate of horizontal line
+  // lineX = playerX + (playerY-lineY)/tan(ALPHA);
+  float hx = playerX + (playerY-hy) / tan(rayAngle);
+  stepy = up ? -tileSize : tileSize;
+  stepx = tileSize / tan(rayAngle);
+
+  // tan() returns stepx as positive in quadrant 3 and negative in quadrant 4
+  // This is the opposite of window coordinates so we need to reverse when
+  // angle is facing down
+  if ( !up ) {
+    stepx = -stepx;
+  }
+
+  while (hx>=0 && hx<gridWidth*tileSize && hy>=0 && hy<gridHeight*tileSize) {
+    int wallY = floor(hy / tileSize);
+    int wallX = floor(hx / tileSize);
+
+    // Look for sprites in current cell
+    vector<Sprite*> spritesFound = findSpritesInCell( *spritesToLookFor,
+                                                      wallX, wallY,
+                                                      tileSize );
+    for (size_t i=0; i<spritesFound.size(); ++i) {
+      Sprite* sprite = spritesFound[ i ];
+      if (!sprite->rayhit) {
+        const float distX = playerX - sprite->x;
+        const float distY = playerY - sprite->y;
+        const float blockDist = distX*distX + distY*distY;
+        sprite->distance = sqrt(blockDist);
+        spritesHit.push_back(sprite);
+        RayHit spriteRayHit(hx, hy, rayAngle);
+        spriteRayHit.strip = stripIdx;
+        if (sprite->distance) {
+          spriteRayHit.distance = sprite->distance;
+          spriteRayHit.correctDistance = spriteRayHit.distance *
+                                          cos(stripAngle);
+        }
+        spriteRayHit.wallType = 0;
+        spriteRayHit.sprite = sprite;
+        spriteRayHit.level = sprite->level;
+        spriteRayHit.distance = sprite->distance;
+        sprite->rayhit = true;
+        hits.push_back( spriteRayHit );
+      }
+    }
+
+    hx += stepx;
+    hy += stepy;
+  }
 }
