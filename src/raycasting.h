@@ -289,13 +289,6 @@ public:
                           int stripIdx, float playerX, float playerY,
                           float rayStartX, float rayStartY);
 
-  findIntersectingSprites(std::vector<RayHit>& rayHits,
-                          std::vector<Sprite>& spritesToLookFor,
-                          float playerX,
-                          float playerY,
-                          float rayEndX,
-                          float rayEndY);
-
   static void raycastSprites(std::vector<RayHit>& hits,
                              std::vector< std::vector<int> >& grids,
                              int gridWidth, int gridHeight, int tileSize,
