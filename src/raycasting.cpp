@@ -1034,7 +1034,6 @@ void Raycaster::raycastThinWalls(std::vector<RayHit>& rayHits,
 
 bool Raycaster::findSiblingAtAngle(RayHit& sibling,
                                    ThinWall& originThinWall,
-                                   std::vector<ThinWall*>& thinWalls,
                                    float originAngle, float playerRot,
                                    int stripIdx, float playerX, float playerY,
                                    float rayStartX, float rayStartY)
@@ -1042,6 +1041,8 @@ bool Raycaster::findSiblingAtAngle(RayHit& sibling,
   if (!originThinWall.thickWall) {
     return false;
   }
+
+  ThickWall* thickWall = originThinWall.thickWall;
 
   const float TWO_PI = M_PI*2;
   float rayAngle = originAngle; // Note: we don't add player angle
@@ -1061,23 +1062,17 @@ bool Raycaster::findSiblingAtAngle(RayHit& sibling,
 
   float vy = playerY + (playerX-vx)*tan(rayAngle);
 
-  for (size_t i=0; i<thinWalls.size(); ++i) {
-    ThinWall* thinWall = thinWalls[i];
+  for (size_t i=0; i<thickWall->thinWalls.size(); ++i) {
+    ThinWall* thinWall = &thickWall->thinWalls[i];
     if (thinWall == &originThinWall) {
       continue;
     }
-
-    if (thinWall->thickWall!=originThinWall.thickWall) {
-      continue;
-    }
-
     RayHit rayHit;
     if (Shape::linesIntersect(thinWall->x1, thinWall->y1,
                               thinWall->x2, thinWall->y2,
                               rayStartX, rayStartY,
                               vx, vy, &rayHit.x, &rayHit.y))
     {
-      ThickWall* thickWall = thinWall->thickWall;
       rayHit.thinWall = thinWall;
 
       float distX = rayStartX - rayHit.x;

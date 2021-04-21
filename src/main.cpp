@@ -1871,7 +1871,7 @@ bool Game::drawSlope(RayHit& rayHit)
   // No siblings means player is inside the slope. The sibling is behind
   // the player, so we do a backwards raycast to find it.
   if (rayHit.siblingDistance == 0) {
-    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall, thinWalls,
+    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall,
                                        rayHit.rayAngle-M_PI, player.rot,
                                        rayHit.strip, player.x, player.y,
                                        player.x, player.y))
@@ -2025,7 +2025,7 @@ bool Game::drawSlopeInverted(RayHit& rayHit)
   // No siblings means player is inside the slope. The sibling is behind
   // the player, so we do a backwards raycast to find it.
   if (rayHit.siblingDistance == 0) {
-    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall, thinWalls,
+    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall,
                                        rayHit.rayAngle-M_PI, player.rot,
                                        rayHit.strip, player.x, player.y,
                                        player.x, player.y))

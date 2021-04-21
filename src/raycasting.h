@@ -284,7 +284,6 @@ public:
 
   bool findSiblingAtAngle(RayHit& sibling,
                           ThinWall& originThinWall,
-                          std::vector<ThinWall*>& thinWalls,
                           float originAngle, float playerRot,
                           int stripIdx, float playerX, float playerY,
                           float rayStartX, float rayStartY);
