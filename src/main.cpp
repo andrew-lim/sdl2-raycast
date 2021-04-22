@@ -114,8 +114,8 @@ public:
     void drawWallBottom(RayHit&rayHit,int wallScreenHeight,float playerScreenZ);
     void drawThinWallTop(RayHit& rayHit, int wallScreenHeight);
     void drawThinWallBottom(RayHit& rayHit, int wallScreenHeight);
-    bool drawSlope(RayHit& rayHit);
-    bool drawSlopeInverted(RayHit& rayHit);
+    bool drawSlope(RayHit& rayHit, float playerScreenZ);
+    bool drawSlopeInverted(RayHit& rayHit, float playerScreenZ);
     void drawFloor(vector<RayHit>& rayHits);
     void drawSkyboxAndHighestCeiling(vector<RayHit>& rayHits);
     void drawWeapon();
@@ -1863,7 +1863,7 @@ void Game::drawThinWallBottom(RayHit& rayHit, int wallScreenHeight)
   }
 }
 
-bool Game::drawSlope(RayHit& rayHit)
+bool Game::drawSlope(RayHit& rayHit, float playerScreenZ)
 {
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   RayHit sibling;
@@ -1902,10 +1902,7 @@ bool Game::drawSlope(RayHit& rayHit)
   float wasInWall = false; // used to stop drawing early
 
   SDL_Rect rc = stripScreenRect(rayHit, rayHit.wallHeight);
-  float screenY = rc.y;
-  if (rc.y < 0-pitch) {
-    screenY = 0-pitch;
-  }
+  float screenY = rc.y + playerScreenZ;
 
   // Raycast vertically from top to bottom to find slope intersection
   for (; screenY<displayHeight-pitch; screenY++) {
@@ -2016,7 +2013,7 @@ bool Game::drawSlope(RayHit& rayHit)
   return true;
 }
 
-bool Game::drawSlopeInverted(RayHit& rayHit)
+bool Game::drawSlopeInverted(RayHit& rayHit, float playerScreenZ)
 {
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
 
@@ -2280,10 +2277,10 @@ void Game::drawWorld(vector<RayHit>& rayHits)
       if (isSlope) {
         drawSlopeStrip(rayHit,*img,sx,sy);
         if (rayHit.thinWall->thickWall->invertedSlope) {
-          drawSlopeInverted(rayHit);
+          drawSlopeInverted(rayHit, playerScreenZ);
         }
         else {
-          drawSlope(rayHit);
+          drawSlope(rayHit, playerScreenZ);
         }
       }
       else if (rayHit.thinWall) {
