@@ -2017,8 +2017,10 @@ bool Game::drawSlopeInverted(RayHit& rayHit, float playerScreenZ)
 
   RayHit sibling;
 
-  // No siblings means player is inside the slope. The sibling is behind
-  // the player, so we do a backwards raycast to find it.
+  // We should already have found the sibling with Raycaster::raycastThinWalls()
+  // No sibling found yet means the player is directly above/below the slope.
+  // The sibling is behind the player, so we do a backwards raycast to find it
+  // and store its properties in the RayHit.sibling* fields
   if (rayHit.siblingDistance == 0) {
     if (!rayHit.findSiblingAtAngle(rayHit.rayAngle-M_PI, player.rot,
                                    player.x, player.y,
@@ -2046,8 +2048,11 @@ bool Game::drawSlopeInverted(RayHit& rayHit, float playerScreenZ)
   float cosFactor = 1/cos(player.rot-rayHit.rayAngle);
   float wasInWall = false;
   float screenX = rayHit.strip * stripWidth;
-  float screenY = 0-pitch;
-  for (; screenY<displayHeight-pitch; screenY++) {
+  SDL_Rect rc = stripScreenRect(rayHit, rayHit.wallHeight);
+  float screenY = rc.y + rc.h + playerScreenZ;
+
+  // Raycast vertically from bottom to top to find slope intersection
+  for (; screenY>=0-pitch; screenY--) {
     float wallTop = 0;
     bool hitSlope = false;
 
