@@ -1868,17 +1868,15 @@ bool Game::drawSlope(RayHit& rayHit, float playerScreenZ)
   Uint32* screenPixels = (Uint32*) screenSurface->pixels;
   RayHit sibling;
 
-  // No siblings means player is inside the slope. The sibling is behind
-  // the player, so we do a backwards raycast to find it.
+  // We should already have found the sibling with Raycaster::raycastThinWalls()
+  // No sibling found yet means the player is directly above/below the slope.
+  // The sibling is behind the player, so we do a backwards raycast to find it
+  // and store its properties in the RayHit.sibling* fields
   if (rayHit.siblingDistance == 0) {
-    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall,
-                                       rayHit.rayAngle-M_PI, player.rot,
-                                       rayHit.strip, player.x, player.y,
-                                       player.x, player.y))
-    {
-      // Sibling distance to player is negated because it is behind.
-      sibling.correctDistance = -sibling.distance;
-      rayHit.copySibling(sibling);
+    if (!rayHit.findSiblingAtAngle(rayHit.rayAngle-M_PI, player.rot,
+                                   player.x, player.y,
+                                   raycaster3D.gridWidth, TILE_SIZE)) {
+      return false; // no sibling found
     }
   }
 
@@ -2022,14 +2020,11 @@ bool Game::drawSlopeInverted(RayHit& rayHit, float playerScreenZ)
   // No siblings means player is inside the slope. The sibling is behind
   // the player, so we do a backwards raycast to find it.
   if (rayHit.siblingDistance == 0) {
-    if (raycaster3D.findSiblingAtAngle(sibling, *rayHit.thinWall,
-                                       rayHit.rayAngle-M_PI, player.rot,
-                                       rayHit.strip, player.x, player.y,
-                                       player.x, player.y))
+    if (!rayHit.findSiblingAtAngle(rayHit.rayAngle-M_PI, player.rot,
+                                   player.x, player.y,
+                                   raycaster3D.gridWidth, TILE_SIZE))
     {
-      // Sibling distance to player is negated because it is behind.
-      sibling.correctDistance = -sibling.distance;
-      rayHit.copySibling(sibling);
+      return false;
     }
   }
 

@@ -139,6 +139,9 @@ struct RayHit {
   float siblingCorrectDistance;
   float siblingThinWallZ;
   float siblingInvertedZ;
+  bool findSiblingAtAngle(float originAngle, float playerRot,
+                          float playerX, float playerY,
+                          float gridWidth, float tileSize);
 
   // sortdistance is used to sort which objects are drawn first.
   // Further objects are drawn first. Value is usually same as distance, but
@@ -281,12 +284,6 @@ public:
                         float playerX, float playerY, float playerZ,
                         float playerRot,
                         float stripAngle, int stripIdx);
-
-  bool findSiblingAtAngle(RayHit& sibling,
-                          ThinWall& originThinWall,
-                          float originAngle, float playerRot,
-                          int stripIdx, float playerX, float playerY,
-                          float rayStartX, float rayStartY);
 
   static void raycastSprites(std::vector<RayHit>& hits,
                              std::vector< std::vector<int> >& grids,

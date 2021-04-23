@@ -45,6 +45,71 @@ float ThinWall::distanceToOrigin(float ix, float iy)
   return sqrt(dx*dx + dy*dy);
 }
 
+bool RayHit::findSiblingAtAngle(float originAngle, float playerRot,
+                                float playerX, float playerY,
+                                float gridWidth, float tileSize)
+{
+  if (!thinWall->thickWall) {
+    return false;
+  }
+
+  ThickWall* thickWall = thinWall->thickWall;
+
+  const float TWO_PI = M_PI*2;
+  float rayAngle = originAngle; // Note: we don't add player angle
+  while (rayAngle < 0) rayAngle += TWO_PI;
+  while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
+
+  bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
+              (rayAngle>TWO_PI*0.75); // Quadrant 4
+
+  float vx = 0;
+  if (right) {
+    vx = gridWidth * tileSize;
+  }
+  else {
+    vx = 0;
+  }
+
+  float vy = playerY + (playerX-vx)*tan(rayAngle);
+
+  for (size_t i=0; i<thickWall->thinWalls.size(); ++i) {
+    ThinWall* siblingThinWall = &thickWall->thinWalls[i];
+    if (siblingThinWall == this->thinWall) {
+      continue;
+    }
+    float x=0, y=0;
+    if (Shape::linesIntersect(siblingThinWall->x1, siblingThinWall->y1,
+                              siblingThinWall->x2, siblingThinWall->y2,
+                              playerX, playerY,
+                              vx, vy, &x, &y))
+    {
+      float distX = playerX - x;
+      float distY = playerY - y;
+      float squaredDistance = distX*distX + distY*distY;
+      float distance = sqrt(squaredDistance);
+      this->siblingDistance = distance;
+      this->siblingThinWallZ = siblingThinWall->z;
+      this->siblingWallHeight = siblingThinWall->height;
+      if (distance) {
+        this->siblingCorrectDistance = distance * cos(playerRot-rayAngle);
+      }
+      // Slope
+      if (siblingThinWall->slope) {
+        this->siblingWallHeight = thickWall->startHeight +
+                                  siblingThinWall->slope *
+                                  siblingThinWall->distanceToOrigin(x,y);
+        if (thickWall->invertedSlope) {
+          this->siblingInvertedZ = siblingWallHeight;
+          this->siblingWallHeight = thickWall->tallerHeight - siblingWallHeight;
+        }
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 ThickWall::ThickWall()
 {
   type = 0;
@@ -1030,84 +1095,6 @@ void Raycaster::raycastThinWalls(std::vector<RayHit>& rayHits,
   for (size_t i=0; i<addedRayHits.size(); ++i) {
     rayHits.push_back(*addedRayHits[i]);
   }
-}
-
-bool Raycaster::findSiblingAtAngle(RayHit& sibling,
-                                   ThinWall& originThinWall,
-                                   float originAngle, float playerRot,
-                                   int stripIdx, float playerX, float playerY,
-                                   float rayStartX, float rayStartY)
-{
-  if (!originThinWall.thickWall) {
-    return false;
-  }
-
-  ThickWall* thickWall = originThinWall.thickWall;
-
-  const float TWO_PI = M_PI*2;
-  float rayAngle = originAngle; // Note: we don't add player angle
-  while (rayAngle < 0) rayAngle += TWO_PI;
-  while (rayAngle >= TWO_PI) rayAngle -= TWO_PI;
-
-  bool right = (rayAngle<TWO_PI*0.25 && rayAngle>=0) || // Quadrant 1
-              (rayAngle>TWO_PI*0.75); // Quadrant 4
-
-  float vx = 0;
-  if (right) {
-    vx = gridWidth * tileSize;
-  }
-  else {
-    vx = 0;
-  }
-
-  float vy = playerY + (playerX-vx)*tan(rayAngle);
-
-  for (size_t i=0; i<thickWall->thinWalls.size(); ++i) {
-    ThinWall* thinWall = &thickWall->thinWalls[i];
-    if (thinWall == &originThinWall) {
-      continue;
-    }
-    RayHit rayHit;
-    if (Shape::linesIntersect(thinWall->x1, thinWall->y1,
-                              thinWall->x2, thinWall->y2,
-                              rayStartX, rayStartY,
-                              vx, vy, &rayHit.x, &rayHit.y))
-    {
-      rayHit.thinWall = thinWall;
-
-      float distX = rayStartX - rayHit.x;
-      float distY = rayStartY - rayHit.y;
-      float squaredDistance = distX*distX + distY*distY;
-      rayHit.squaredDistance = squaredDistance;
-      rayHit.distance = sqrt(rayHit.squaredDistance);
-
-      rayHit.wallHeight = thinWall->height;
-      rayHit.strip      = stripIdx;
-      float dto         = round(thinWall->distanceToOrigin(rayHit.x,rayHit.y));
-      rayHit.tileX      = (int)(dto) % this->tileSize;
-      rayHit.horizontal = thinWall->horizontal;
-      rayHit.wallType   = thinWall->wallType;
-      rayHit.rayAngle   = rayAngle;
-      if (rayHit.distance) {
-        rayHit.correctDistance = rayHit.distance * cos( playerRot - rayAngle );
-      }
-
-      // Slope
-      if (thinWall->slope) {
-        rayHit.wallHeight = thickWall->startHeight + thinWall->slope *
-                            thinWall->distanceToOrigin(rayHit.x,rayHit.y);
-        if (thickWall->invertedSlope) {
-          rayHit.invertedZ = rayHit.wallHeight;
-          rayHit.wallHeight = thickWall->tallerHeight - rayHit.wallHeight;
-        }
-      }
-
-      sibling = rayHit;
-
-      return true;
-    }
-  }
-  return false;
 }
 
 void Raycaster::raycastSprites(vector<RayHit>& hits,
