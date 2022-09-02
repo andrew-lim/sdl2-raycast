@@ -160,6 +160,7 @@ private:
     float fovRadians, viewDist;
     bool fullscreen;
     float pitch;
+    float* stripAngles;
     Raycaster raycaster3D;
     std::vector<int> ceilingGrid;
     std::vector<int> groundWalls;
@@ -215,6 +216,7 @@ Game::Game()
   rayHitsCount = 0;
   fogOn = false;
   rectWall = triangleWall = diamondWall = 0;
+  stripAngles = 0;
   reset();
 }
 
@@ -461,6 +463,14 @@ void Game::start() {
   viewDist = Raycaster::screenDistance(displayWidth, fovRadians);
   fullscreen = settingsManager.getInt("fullscreen", 0);
 
+  // Calculate the angles for each column strip once and save them
+  this->stripAngles = new float[rayCount];
+  for (int strip=0; strip<rayCount; strip++) {
+    float screenX = (rayCount/2 - strip) * stripWidth;
+    stripAngles[strip] = Raycaster::stripAngle(screenX, viewDist);
+  }
+  printf("stripAngles have been calculated and saved\n");
+
   printf("Resolution   = %d x %d\n", displayWidth, displayHeight);
   printf("Map size     = %d x %d\n", MAP_WIDTH, MAP_HEIGHT);
   printf("FOV          = %d degrees\n", fovDegrees);
@@ -671,6 +681,10 @@ void Game::draw() {
 }
 
 void Game::stop() {
+    if (stripAngles) {
+      delete[] stripAngles;
+      stripAngles = 0;
+    }
     if (NULL != renderer) {
         SDL_DestroyRenderer(renderer);
         renderer = NULL;
@@ -2582,9 +2596,9 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
     sprites[i].rayhit = false;
   }
 
+  // Loop through and raycast each angle
   for (int strip=0; strip<rayCount; strip++) {
-    float screenX = (rayCount/2 - strip) * stripWidth;
-    const float stripAngle = Raycaster::stripAngle(screenX, viewDist);
+    const float stripAngle = stripAngles[strip];
     raycaster3D.raycast(rayHits, player.x, player.y, player.z, player.rot,
                         stripAngle, strip, 0);
 
@@ -2593,8 +2607,8 @@ void Game::raycastWorld(vector<RayHit>& rayHits)
                                  stripAngle, strip);
 
     raycaster3D.raycastSprites(rayHits,
-                               raycaster3D.grids,
-                               raycaster3D.gridWidth, raycaster3D.gridHeight, TILE_SIZE,
+                               raycaster3D.grids, raycaster3D.gridWidth,
+                               raycaster3D.gridHeight, TILE_SIZE,
                                player.x, player.y, player.z, player.rot,
                                stripAngle, strip, &sprites);
   }
@@ -2837,3 +2851,4 @@ int main(int argc, char** argv){
     game.start();
     return 0;
 }
+
