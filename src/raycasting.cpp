@@ -1016,10 +1016,12 @@ void Raycaster::findIntersectingThinWalls(std::vector<RayHit>& rayHits,
       float squaredDistance = distX*distX + distY*distY;
       rayHit.squaredDistance = squaredDistance;
       rayHit.distance = sqrt(squaredDistance);
-      rayHit.thinWall = &thinWall;
-      rayHit.x = ix;
-      rayHit.y = iy;
-      rayHits.push_back(rayHit);
+      if (rayHit.distance) {
+        rayHit.thinWall = &thinWall;
+        rayHit.x = ix;
+        rayHit.y = iy;
+        rayHits.push_back(rayHit);
+     }
     }
   }
 }
@@ -1065,31 +1067,32 @@ void Raycaster::raycastThinWalls(std::vector<RayHit>& rayHits,
     rayHit.rayAngle   = rayAngle;
     if (rayHit.distance) {
       rayHit.correctDistance = rayHit.distance * cos( playerRot - rayAngle );
-    }
-
-    // Slope
-    if (thinWall->slope) {
-      rayHit.wallHeight = thickWall->startHeight + thinWall->slope *
-                          thinWall->distanceToOrigin(rayHit.x,rayHit.y);
-      if (thickWall->invertedSlope) {
-        rayHit.invertedZ = rayHit.wallHeight;
-        rayHit.wallHeight = thickWall->tallerHeight - rayHit.wallHeight;
+      if (rayHit.correctDistance < 1) {
+        continue;
       }
-    }
+      addedRayHits.push_back(&rayHit);
+      // Slope
+      if (thinWall->slope) {
+        rayHit.wallHeight = thickWall->startHeight + thinWall->slope *
+                            thinWall->distanceToOrigin(rayHit.x,rayHit.y);
+        if (thickWall->invertedSlope) {
+          rayHit.invertedZ = rayHit.wallHeight;
+          rayHit.wallHeight = thickWall->tallerHeight - rayHit.wallHeight;
+        }
+      }
 
-    if (thickWall && thickWall->slope) {
-      for (int j=0; j<(int)addedRayHits.size(); ++j) {
-        RayHit* addedRayHit = addedRayHits[ j ];
-        if (!addedRayHit->sameRayHit(rayHit)) {
-          if (addedRayHit->thinWall->thickWall == thickWall) {
-            addedRayHit->copySibling(rayHit);
-            rayHit.copySibling(*addedRayHit);
+      if (thickWall && thickWall->slope) {
+        for (int j=0; j<(int)addedRayHits.size(); ++j) {
+          RayHit* addedRayHit = addedRayHits[ j ];
+          if (!addedRayHit->sameRayHit(rayHit)) {
+            if (addedRayHit->thinWall->thickWall == thickWall) {
+              addedRayHit->copySibling(rayHit);
+              rayHit.copySibling(*addedRayHit);
+            }
           }
         }
       }
     }
-
-    addedRayHits.push_back(&rayHit);
   }
 
   for (size_t i=0; i<addedRayHits.size(); ++i) {
