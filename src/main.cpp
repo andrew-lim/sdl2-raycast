@@ -724,8 +724,8 @@ void Game::drawWeapon() {
 
 void Game::fpsChanged( int fps ) {
     char szFps[ 128 ] ;
-    sprintf( szFps, "rayHits=%d FPS=%d Cell=(%d,%d,%d) Rot=(%d deg)",
-     rayHitsCount, fps,
+    sprintf( szFps, "FPS=%d   rayHits=%d   Cell=(%d,%d,%d) Rot=(%d deg)",
+     fps, rayHitsCount,
      (int)(player.x/TILE_SIZE), (int)(player.y/TILE_SIZE),
      (int)(player.z/TILE_SIZE),
      (int)(player.rot*(180/M_PI))
@@ -1598,7 +1598,7 @@ void Game::drawWallBottom(RayHit& rayHit, int wallScreenHeight,
 
   // Find bottom of wall, and render downwards towards center plane
   int screenY = (displayHeight-wallScreenHeight)/2 + wallScreenHeight;
-  screenY = screenY - rayHit.level*wallScreenHeight + playerScreenZ - pitch;
+  screenY -= rayHit.level*wallScreenHeight + playerScreenZ;
   if (screenY < 0 - pitch ) {
     screenY = 0 - pitch;
   }
@@ -1676,7 +1676,7 @@ void Game::drawWallTop(RayHit& rayHit, int wallScreenHeight,float playerScreenZ)
 
   // Find top of wall, and render upwards towards center plane
   int screenY = (displayHeight-wallScreenHeight)/2;
-  screenY = screenY - rayHit.level * wallScreenHeight + playerScreenZ - pitch;
+  screenY = screenY - rayHit.level * wallScreenHeight + playerScreenZ;
   if (screenY > displayHeight - pitch ) {
     screenY = displayHeight - pitch;
   }
