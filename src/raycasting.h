@@ -174,6 +174,9 @@ struct RayHit {
   }
 
   bool sameRayHit(const RayHit& rayHit2);
+
+  static RayHit spriteRayHit(Sprite* sprite, float distX, float distY,
+                             int strip, float rayAngle);
 };
 
 /**

@@ -395,6 +395,25 @@ bool RayHit::sameRayHit(const RayHit& rayHit2)
          rayHit.rayAngle == rayHit2.rayAngle;
 }
 
+RayHit RayHit::spriteRayHit(Sprite* sprite, float distX, float distY,
+                                   int strip, float rayAngle)
+{
+  RayHit rayHit(sprite->x, sprite->y, rayAngle);
+  const float blockDist = distX*distX + distY*distY;
+  sprite->distance = sqrt(blockDist);
+  rayHit.strip = strip;
+  if (sprite->distance) {
+    rayHit.distance = sprite->distance;
+    rayHit.correctDistance = rayHit.distance * cos(rayAngle);
+  }
+  rayHit.wallType = 0;
+  rayHit.sprite = sprite;
+  rayHit.level = sprite->level;
+  rayHit.distance = sprite->distance;
+  sprite->rayhit = true;
+  return rayHit;
+}
+
 #define USE_FMOD 1
 
 static float fmod2( float a, int b ) {
@@ -711,12 +730,10 @@ void Raycaster::raycast(vector<RayHit>& hits,
         if (!sprite->rayhit) {
           const float distX = playerX - sprite->x;
           const float distY = playerY - sprite->y;
-          const float blockDist = distX*distX + distY*distY;
-          if (blockDist) {
-            sprite->rayhit = true;
-            sprite->distance = sqrt(blockDist);
-            spritesHit.push_back(sprite);
-          }
+          RayHit spriteRayHit = RayHit::spriteRayHit(sprite, distX, distY,
+                                                     stripIdx,
+                                                     stripAngle);
+          hits.push_back( spriteRayHit );
         }
       }
     }
@@ -1140,12 +1157,9 @@ void Raycaster::raycastSprites(vector<RayHit>& hits,
     if (!sprite->rayhit) {
       const float distX = playerX - sprite->x;
       const float distY = playerY - sprite->y;
-      const float blockDist = distX*distX + distY*distY;
-      if (blockDist) {
-        sprite->rayhit = true;
-        sprite->distance = sqrt(blockDist);
-        spritesHit.push_back(sprite);
-      }
+      RayHit spriteRayHit = RayHit::spriteRayHit(sprite, distX, distY, stripIdx,
+                                                 stripAngle);
+      hits.push_back( spriteRayHit );
     }
   }
 
@@ -1190,22 +1204,9 @@ void Raycaster::raycastSprites(vector<RayHit>& hits,
       if (!sprite->rayhit) {
         const float distX = playerX - sprite->x;
         const float distY = playerY - sprite->y;
-        const float blockDist = distX*distX + distY*distY;
-        sprite->distance = sqrt(blockDist);
-        spritesHit.push_back(sprite);
-
-        RayHit spriteRayHit(vx, vy, rayAngle);
-        spriteRayHit.strip = stripIdx;
-        if (sprite->distance) {
-          spriteRayHit.distance = sprite->distance;
-          spriteRayHit.correctDistance = spriteRayHit.distance *
-                                          cos(stripAngle);
-        }
-        spriteRayHit.wallType = 0;
-        spriteRayHit.sprite = sprite;
-        spriteRayHit.level = sprite->level;
-        spriteRayHit.distance = sprite->distance;
-        sprite->rayhit = true;
+        RayHit spriteRayHit = RayHit::spriteRayHit(sprite, distX, distY,
+                                                   stripIdx,
+                                                   stripAngle);
         hits.push_back( spriteRayHit );
       }
     }
@@ -1253,21 +1254,9 @@ void Raycaster::raycastSprites(vector<RayHit>& hits,
       if (!sprite->rayhit) {
         const float distX = playerX - sprite->x;
         const float distY = playerY - sprite->y;
-        const float blockDist = distX*distX + distY*distY;
-        sprite->distance = sqrt(blockDist);
-        spritesHit.push_back(sprite);
-        RayHit spriteRayHit(hx, hy, rayAngle);
-        spriteRayHit.strip = stripIdx;
-        if (sprite->distance) {
-          spriteRayHit.distance = sprite->distance;
-          spriteRayHit.correctDistance = spriteRayHit.distance *
-                                          cos(stripAngle);
-        }
-        spriteRayHit.wallType = 0;
-        spriteRayHit.sprite = sprite;
-        spriteRayHit.level = sprite->level;
-        spriteRayHit.distance = sprite->distance;
-        sprite->rayhit = true;
+        RayHit spriteRayHit = RayHit::spriteRayHit(sprite, distX, distY,
+                                                   stripIdx,
+                                                   stripAngle);
         hits.push_back( spriteRayHit );
       }
     }
